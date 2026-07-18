@@ -4,7 +4,7 @@
 
 ## 1. 解压
 
-把 `qiban-companion-portable-v0.1.0.zip` 解压到一个普通文件夹，例如桌面或文档目录。
+把 `qiban-companion-portable-v0.1.1.zip` 解压到一个普通文件夹，例如桌面或文档目录。
 
 ## 2. 启动
 
@@ -33,7 +33,7 @@ bash start-qiban.sh
 启动成功后会自动打开：
 
 - 手机聊天：`http://127.0.0.1:8765/companion-mobile-demo/`
-- 3D 壁纸：`http://127.0.0.1:8765/desktop-wallpaper/`
+- 3D 角色壁纸：`http://127.0.0.1:8765/desktop-wallpaper/`
 - 本地控制台：`http://127.0.0.1:8766/`
 
 运行时请保持启动窗口打开。关闭窗口或按提示停止后，语音、记忆和模型后端也会停止。

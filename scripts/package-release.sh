@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION="${1:-v0.1.0}"
+VERSION="${1:-v0.1.1}"
 NAME="qiban-companion-portable-${VERSION}"
 DIST="$ROOT/dist"
 ZIP_PATH="$DIST/${NAME}.zip"

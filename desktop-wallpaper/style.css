@@ -2,6 +2,7 @@
   --ink: #f6f0e7;
   --muted: #b9c0b7;
   --accent: #07c160;
+  --warm: #ff9ab4;
   --panel: rgba(10, 14, 12, 0.54);
   --line: rgba(246, 240, 231, 0.18);
 }
@@ -26,9 +27,27 @@ body {
   width: 100vw;
   height: 100svh;
   overflow: hidden;
+  background: linear-gradient(138deg, #101512 0%, #18231f 48%, #2a1e2f 100%);
+}
+
+.wallpaper::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
   background:
-    linear-gradient(120deg, rgba(11, 16, 14, 0.95), rgba(25, 27, 22, 0.92)),
-    url("./assets/xiao-qi-avatar.png") center / cover no-repeat;
+    repeating-linear-gradient(90deg, rgba(246, 240, 231, 0.055) 0 1px, transparent 1px 84px),
+    repeating-linear-gradient(0deg, rgba(246, 240, 231, 0.04) 0 1px, transparent 1px 84px);
+  opacity: 0.5;
+  transform: perspective(720px) rotateX(58deg) translateY(22%);
+  transform-origin: center bottom;
+}
+
+.wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(10, 14, 12, 0.74), transparent 42%, rgba(10, 14, 12, 0.16));
+  pointer-events: none;
 }
 
 #scene {
@@ -37,6 +56,12 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+#scene:active {
+  cursor: grabbing;
 }
 
 .presence {
@@ -54,13 +79,13 @@ body {
   margin: 0 0 8px;
   color: var(--accent);
   font-size: 12px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 h1 {
   margin: 0;
-  font-size: clamp(52px, 9vw, 128px);
+  font-size: 96px;
   line-height: 0.92;
   letter-spacing: 0;
 }
@@ -68,7 +93,8 @@ h1 {
 .presence p:last-child {
   margin: 18px 0 0;
   color: var(--muted);
-  font-size: clamp(15px, 1.8vw, 21px);
+  font-size: 20px;
+  line-height: 1.5;
 }
 
 .dock {
@@ -79,12 +105,24 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
+  max-width: calc(100vw - 24px);
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--panel);
   backdrop-filter: blur(16px);
   transform: translateX(-50%);
+}
+
+.dock-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.actions {
+  padding-left: 6px;
+  border-left: 1px solid var(--line);
 }
 
 .dock-btn {
@@ -97,6 +135,12 @@ h1 {
   color: var(--muted);
   font-size: 14px;
   cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+}
+
+.dock-btn:hover {
+  transform: translateY(-1px);
 }
 
 .dock-btn.active {
@@ -125,12 +169,62 @@ h1 {
 
 @media (max-width: 720px) {
   .presence {
-    bottom: 106px;
+    left: 20px;
+    right: 20px;
+    top: max(28px, env(safe-area-inset-top));
+    bottom: auto;
+    max-width: none;
+  }
+
+  .eyebrow {
+    font-size: 11px;
+  }
+
+  h1 {
+    font-size: 54px;
+  }
+
+  .presence p:last-child {
+    max-width: 260px;
+    font-size: 15px;
   }
 
   .dock {
-    width: calc(100vw - 24px);
-    justify-content: center;
+    width: calc(100vw - 18px);
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+    overflow: hidden;
+    border-radius: 22px;
+    gap: 4px;
+    padding: 6px;
+    scrollbar-width: none;
+  }
+
+  .dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dock-btn {
+    width: 100%;
+    min-width: 0;
+    height: 30px;
+    padding: 0;
+    font-size: 12px;
+  }
+
+  .dock-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .actions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding-top: 4px;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .server-state {

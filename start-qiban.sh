@@ -108,11 +108,11 @@ STATIC_PID="$!"
 wait_for_http "http://$HOST:$STATIC_PORT/"
 
 MOBILE_URL="http://$HOST:$STATIC_PORT/companion-mobile-demo/"
-WALLPAPER_URL="http://$HOST:$STATIC_PORT/desktop-wallpaper/"
+WALLPAPER_URL="http://$HOST:$STATIC_PORT/desktop-wallpaper/?voice=1"
 CONSOLE_URL="http://$HOST:$API_PORT/"
 
 echo "手机聊天: $MOBILE_URL"
-echo "3D 壁纸:  $WALLPAPER_URL"
+echo "3D 角色:  $WALLPAPER_URL"
 echo "控制台:   $CONSOLE_URL"
 
 if command -v open >/dev/null 2>&1; then

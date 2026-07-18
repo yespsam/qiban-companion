@@ -118,11 +118,11 @@ try {
   Wait-Http "http://$BindHost`:$StaticPort/"
 
   $mobileUrl = "http://$BindHost`:$StaticPort/companion-mobile-demo/"
-  $wallpaperUrl = "http://$BindHost`:$StaticPort/desktop-wallpaper/"
+  $wallpaperUrl = "http://$BindHost`:$StaticPort/desktop-wallpaper/?voice=1"
   $consoleUrl = "http://$BindHost`:$ApiPort/"
 
   Write-Host "手机聊天: $mobileUrl"
-  Write-Host "3D 壁纸:  $wallpaperUrl"
+  Write-Host "3D 角色:  $wallpaperUrl"
   Write-Host "控制台:   $consoleUrl"
   Start-Process $mobileUrl
   Start-Process $wallpaperUrl
