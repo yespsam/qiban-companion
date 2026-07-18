@@ -1,0 +1,9 @@
+[project]
+name = "qiban-companion"
+version = "0.1.0"
+description = "本地优先的 AI 情感伴侣（栖伴）"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

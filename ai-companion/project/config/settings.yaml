@@ -1,0 +1,29 @@
+# 栖伴主配置
+tier: standard            # lite | standard | pro，hardware_detect 会给出建议
+app_name: 栖伴
+female_name: 小栖
+male_name: 栖安
+llm_backend: mock         # llamacpp | ollama | mock（首次安装后建议改为 llamacpp 或 ollama）
+model_id: hermes-3-8b
+llm_temperature: 0.72     # 情感陪伴更自然：有温度但不发散
+llm_max_tokens: 900       # 手机端语音回复不宜过长
+conversation_style: voice_first_companion
+show_thinking: true       # 思考模式：展示伴侣的内心思考
+master_name: 主人
+active_persona: female_companion
+active_relationship: lover  # 关系身份：lover | friend | bestie | elder（对应 config/relationships/*.yaml）
+active_archetype: ""        # 声线：女声 loli萝莉/yujie御姐/funny搞笑女；男声 shonen少年/uncle大叔/funny搞笑男（空=随身份）
+voice_enabled: true       # 浏览器/手机端 TTS 默认启用；如不需要语音可在控制台关闭
+tts_engine: edge_tts      # edge_tts | piper | clone（clone=本地克隆声优，需 GPT-SoVITS 兼容服务）
+clone_api_base: http://127.0.0.1:9880  # 克隆引擎 HTTP API 地址
+clone_ref_audio: ""       # 克隆参考音频（POST /api/voice/upload 上传后自动写入）
+clone_ref_text: ""        # 参考音频对应文本
+voice_profile: warm_intimate
+visual_style: voice_shaped_virtual_human
+stt_model_size: small
+bluetooth_enabled: false
+mihome_enabled: false
+mihome_mode: lan          # lan | cloud
+cluster_enabled: false
+cluster_role: master      # master | worker
+data_dir: data

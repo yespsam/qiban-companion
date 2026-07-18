@@ -1,0 +1,17 @@
+.DS_Store
+.run/
+.venv/
+__pycache__/
+*.pyc
+.playwright-cli/
+output/
+*.zip
+ai-companion/backup-rel/
+ai-companion/SPEC.md
+ai-companion/plan.md
+ai-companion/recovered-devices/
+ai-companion/recovered-ui/
+ai-companion/project/data/
+ai-companion/project/.venv/
+ai-companion/project/.pytest_cache/
+ai-companion/project/**/__pycache__/

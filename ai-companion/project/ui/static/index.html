@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>栖伴 · 本地 AI 情感伴侣控制台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23c2804f'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' fill='white'%3E%E6%A0%96%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">❦</span>
+      <span class="brand-name" id="brand-name">栖伴</span>
+      <span class="brand-sub">本地 AI 情感伴侣控制台</span>
+    </div>
+    <div id="conn" class="conn conn-connecting">连接中…</div>
+  </header>
+
+  <main class="layout">
+    <!-- 左栏：人格 / 好感度心情 / 思考链 -->
+    <aside class="col col-left">
+      <section class="card persona-card">
+        <div id="persona-avatar" class="avatar">🌸</div>
+        <h2 id="persona-name" class="persona-name">加载中…</h2>
+        <p id="persona-traits" class="persona-traits"></p>
+        <div id="persona-switch" class="persona-switch" role="group" aria-label="切换伴侣人格"></div>
+        <h3 class="card-title relationship-title">关系身份</h3>
+        <div id="relationship-switch" class="relationship-switch" role="group" aria-label="切换关系身份"></div>
+        <p id="engine-banner" class="engine-banner hidden"></p>
+      </section>
+
+      <section class="card emotion-card">
+        <h3 class="card-title">好感度</h3>
+        <div class="affection-row">
+          <div class="affection-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+            <div id="affection-fill" class="affection-fill" style="width: 50%"></div>
+          </div>
+          <span id="affection-num" class="affection-num">50</span>
+        </div>
+        <h3 class="card-title">心情</h3>
+        <div id="mood" class="mood">—</div>
+      </section>
+
+      <section class="card thinking-card">
+        <div class="card-row">
+          <h3 class="card-title">思考模式</h3>
+          <label class="switch" title="显示 / 隐藏 TA 的内心思考">
+            <input type="checkbox" id="thinking-toggle" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+        <details id="latest-thinking" class="thinking-panel">
+          <summary>💭 <span id="thinking-owner">TA 的内心</span></summary>
+          <div id="latest-thinking-content" class="thinking-content empty">还没有思考记录，去说点什么吧</div>
+        </details>
+      </section>
+    </aside>
+
+    <!-- 中栏：聊天 -->
+    <section class="col col-center">
+      <section class="avatar-stage" id="avatar-stage" aria-label="虚拟人物形象">
+        <div class="stage-copy">
+          <p class="stage-kicker">voice-shaped virtual human</p>
+          <h1 id="stage-name">小栖</h1>
+          <p id="stage-line">温柔、亲近、会记住你的心事。声音和语言模型会随关系身份一起调整。</p>
+          <div class="stage-meta">
+            <span id="stage-voice" class="stage-pill">温柔女声</span>
+            <span id="stage-model" class="stage-pill subtle">local model</span>
+          </div>
+        </div>
+        <div class="stage-portrait-wrap">
+          <img id="stage-portrait" src="/static/assets/xiao-qi-avatar.png" alt="小栖虚拟人物形象">
+        </div>
+        <div class="stage-controls">
+          <span class="stage-label">声线</span>
+          <div id="archetype-switch" class="archetype-switch" role="group" aria-label="切换声线"></div>
+        </div>
+      </section>
+      <div id="chat-stream" class="chat-stream" aria-live="polite"></div>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <button type="button" id="mic-btn" class="mic-btn" title="语音输入">🎤</button>
+        <input id="chat-input" class="chat-input" type="text" placeholder="和 TA 说点什么…" maxlength="2000">
+        <button type="submit" id="send-btn" class="send-btn">发送</button>
+      </form>
+    </section>
+
+    <!-- 右栏：设备 / 集群 -->
+    <aside class="col col-right">
+      <section class="card">
+        <div class="card-row">
+          <h3 class="card-title">米家设备</h3>
+          <button id="mihome-refresh" class="mini-btn" type="button">刷新</button>
+        </div>
+        <div id="mihome-list" class="dev-list"><p class="muted">加载中…</p></div>
+      </section>
+
+      <section class="card">
+        <div class="card-row">
+          <h3 class="card-title">蓝牙设备</h3>
+          <button id="bt-scan" class="mini-btn" type="button">扫描</button>
+        </div>
+        <div id="bt-list" class="dev-list"><p class="muted">加载中…</p></div>
+      </section>
+
+      <section class="card">
+        <div class="card-row">
+          <h3 class="card-title">集群节点</h3>
+          <button id="cluster-refresh" class="mini-btn" type="button">刷新</button>
+        </div>
+        <div id="cluster-list" class="dev-list"><p class="muted">加载中…</p></div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

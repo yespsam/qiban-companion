@@ -1,0 +1,27 @@
+# 模型注册表：底座为 Nous Hermes 开源模型（GGUF）
+# Hermes-3-Llama-3.1-8B 由 Nous Research 基于 Llama-3.1-8B 微调，可商用许可。
+# 官方发布更新版本时，仅需修改本文件。
+tiers:
+  lite:        # CPU / 树莓派：4B 以下 Q4 量化
+    backend: llamacpp
+    model_id: hermes-lite
+  standard:    # 8GB 显存：8B Q4_K_M（默认推荐）
+    backend: llamacpp
+    model_id: hermes-3-8b
+  pro:         # 16GB+ 显存：8B Q8，思考模式全量
+    backend: llamacpp
+    model_id: hermes-3-8b-q8
+models:
+  hermes-lite:
+    repo: "Qwen/Qwen3-1.7B-GGUF"        # lite 档占位，可替换为任意 Hermes 微调小模型
+    file: "qwen3-1.7b-q4_k_m.gguf"
+    ctx: 4096
+  hermes-3-8b:
+    repo: "NousResearch/Hermes-3-Llama-3.1-8B-GGUF"
+    file: "Hermes-3-Llama-3.1-8B.Q4_K_M.gguf"
+    ctx: 8192
+    ollama_tag: "hermes3:8b"
+  hermes-3-8b-q8:
+    repo: "NousResearch/Hermes-3-Llama-3.1-8B-GGUF"
+    file: "Hermes-3-Llama-3.1-8B.Q8_0.gguf"
+    ctx: 8192

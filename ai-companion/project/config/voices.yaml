@@ -1,0 +1,59 @@
+# 声优选角表（SPEC §3.7a）
+# 人格 × 关系身份 → 音色 + 风格 + 韵律；再按 TA 当下心情叠加情绪微调。
+#
+# edge_tts_voice 可选值（微软神经语音，免费）：
+#   女声：zh-CN-XiaoxiaoNeural(晓晓·温柔) zh-CN-XiaoyiNeural(晓伊·甜美)
+#   男声：zh-CN-YunxiNeural(云希·清朗)   zh-CN-YunyangNeural(云扬·阳光)
+#         zh-CN-YunjianNeural(云健·稳重) zh-CN-YunxiaNeural(云夏·清亮)
+# style  为说话风格提示，引擎尽力而为（edge-tts 目前忽略，保留给支持 SSML 风格的引擎）。
+# rate   语速微调，"+8%" / "-12%" 形式；pitch 音调微调，"+2Hz" / "-2Hz" 形式。
+#        仅支持韵律的引擎生效（EdgeTTSEngine.supports_prosody = True）。
+
+cast:
+  female_companion:
+    default: { edge_tts_voice: zh-CN-XiaoxiaoNeural, style: gentle,       rate: "+0%", pitch: "+0Hz" }
+    lover:   { edge_tts_voice: zh-CN-XiaoxiaoNeural, style: affectionate, rate: "-2%", pitch: "+2Hz" }  # 情侣：晓晓，更软更黏
+    friend:  { edge_tts_voice: zh-CN-XiaoyiNeural,   style: chat,         rate: "+2%", pitch: "+0Hz" }  # 朋友：晓伊，自然大方
+    bestie:  { edge_tts_voice: zh-CN-XiaoyiNeural,   style: cheerful,     rate: "+8%", pitch: "+4Hz" }  # 闺蜜：晓伊，甜而快
+    elder:   { edge_tts_voice: zh-CN-XiaoxiaoNeural, style: calm,         rate: "-8%", pitch: "-6Hz" }  # 长辈：晓晓，沉稳放缓
+  male_companion:
+    default: { edge_tts_voice: zh-CN-YunxiNeural,    style: warm,         rate: "+0%", pitch: "+0Hz" }
+    lover:   { edge_tts_voice: zh-CN-YunxiNeural,    style: affectionate, rate: "-2%", pitch: "+0Hz" }  # 情侣：云希，温柔放缓
+    friend:  { edge_tts_voice: zh-CN-YunyangNeural,  style: chat,         rate: "+2%", pitch: "+0Hz" }  # 朋友：云扬，阳光利落
+    bestie:  { edge_tts_voice: zh-CN-YunyangNeural,  style: cheerful,     rate: "+6%", pitch: "+2Hz" }  # 闺蜜：云扬，活泼一点
+    elder:   { edge_tts_voice: zh-CN-YunjianNeural,  style: calm,         rate: "-8%", pitch: "-2Hz" }  # 长辈：云健，厚重放缓
+
+# 声线（SPEC §3.7b）：同一人格可切换的声音风格。
+# 选择声线后整组覆盖选角的 voice/style/rate/pitch，情绪韵律仍在其上叠加。
+# 女声：loli 萝莉音（晓伊·甜亮）| yujie 御姐音（晓晓·低缓）| funny 搞笑女（晓伊·明快跳脱）
+# 男声：shonen 少年音（云夏·清亮）| uncle 大叔音（云健·稳重）| funny 搞笑男（云扬·夸张跳脱）
+archetypes:
+  female:
+    loli:  { name: 萝莉音, edge_tts_voice: zh-CN-XiaoyiNeural,     style: cheerful, rate: "+12%", pitch: "+18Hz" }
+    yujie: { name: 御姐音, edge_tts_voice: zh-CN-XiaoxiaoNeural,   style: calm,     rate: "-8%",  pitch: "-8Hz" }
+    funny: { name: 搞笑女, edge_tts_voice: zh-CN-XiaoyiNeural,     style: cheerful, rate: "+16%", pitch: "+10Hz" }
+  male:
+    shonen: { name: 少年音, edge_tts_voice: zh-CN-YunxiaNeural,  style: cheerful, rate: "+8%",  pitch: "+12Hz" }
+    uncle:  { name: 大叔音, edge_tts_voice: zh-CN-YunjianNeural, style: calm,     rate: "-10%", pitch: "-8Hz" }
+    funny:  { name: 搞笑男, edge_tts_voice: zh-CN-YunyangNeural, style: cheerful, rate: "+16%", pitch: "+8Hz" }
+
+# 情绪韵律：按 TA 当下心情（emotion.mood）在选角基础上叠加微调
+emotion_prosody:
+  care:     { rate: "-12%", pitch: "-2Hz" }   # 心疼主人：放轻放慢
+  worried:  { rate: "-6%",  pitch: "-1Hz" }   # 委屈担心：略沉
+  sleepy:   { rate: "-10%", pitch: "-2Hz" }   # 困倦：慢而低
+  calm:     { rate: "+0%",  pitch: "+0Hz" }
+  happy:    { rate: "+4%",  pitch: "+1Hz" }   # 开心：略快略亮
+  excited:  { rate: "+8%",  pitch: "+3Hz" }   # 超开心：明快上扬
+
+# 自定义声优（本地语音克隆）预留位 —— 想换成你选定的声优音色时：
+#   1. 本地部署 GPT-SoVITS / CosyVoice / Qwen3-TTS（见 docs/SPEC.md §3.7a）
+#   2. 填入 ref_audio（3~10 秒干净人声参考音频）与对应文本
+#   3. enabled: true（克隆引擎接入后生效；当前版本仅作配置预留）
+clone:
+  enabled: false
+  engine: gpt_sovits              # gpt_sovits | cosyvoice | qwen3_tts
+  api_base: http://127.0.0.1:9880
+  voices:
+    female_companion: { ref_audio: "", ref_text: "" }
+    male_companion:   { ref_audio: "", ref_text: "" }

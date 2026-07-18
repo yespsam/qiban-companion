@@ -1,0 +1,19 @@
+# ===== 核心（必须）=====
+pyyaml>=6.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+httpx>=0.27
+pytest>=8.0
+# ===== 语音（可选，语音对话功能）=====
+# faster-whisper>=1.0        # 本地 STT
+edge-tts>=6.1               # 在线高质量 TTS（默认，免GPU）
+# piper-tts>=1.2             # 本地离线 TTS
+# sounddevice>=0.4           # 录音/播放
+# webrtcvad>=2.0             # VAD 打断
+# openwakeword>=0.6          # 唤醒词
+# ===== 设备（可选）=====
+# bleak>=0.22                # 蓝牙 BLE
+# python-miio>=0.5.12        # 米家局域网控制
+# ===== 模型（可选，二选一）=====
+# llama-cpp-python>=0.2.90   # 本地推理（需编译/二进制）
+# chromadb>=0.5              # 向量记忆（可选增强）
