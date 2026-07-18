@@ -6,6 +6,8 @@ __pycache__/
 .playwright-cli/
 output/
 dist/
+meshy_output/
+modeling/hunyuan_output/
 *.zip
 ai-companion/backup-rel/
 ai-companion/SPEC.md
