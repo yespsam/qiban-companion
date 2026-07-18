@@ -27,7 +27,7 @@ body {
   width: 100vw;
   height: 100svh;
   overflow: hidden;
-  background: linear-gradient(138deg, #101512 0%, #18231f 48%, #2a1e2f 100%);
+  background: linear-gradient(138deg, #101512 0%, #1a2420 46%, #242030 100%);
 }
 
 .wallpaper::before {
@@ -85,7 +85,7 @@ body {
 
 h1 {
   margin: 0;
-  font-size: 96px;
+  font-size: 92px;
   line-height: 0.92;
   letter-spacing: 0;
 }
@@ -220,7 +220,7 @@ h1 {
   }
 
   .actions {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     padding-top: 4px;
     padding-left: 0;
     border-top: 1px solid var(--line);

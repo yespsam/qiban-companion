@@ -1,6 +1,6 @@
 # 栖伴
 
-栖伴是一个本地优先的 AI 伴侣原型，包含手机聊天入口、可操作的二次元 3D 桌面角色，以及可部署到随身小盒子的 FastAPI 后端。
+栖伴是一个本地优先的 AI 伴侣原型，包含手机聊天入口、可操作的拟人化二次元 3D 桌面角色，以及可部署到随身小盒子的 FastAPI 后端。
 
 ## 一键打开
 
@@ -39,24 +39,24 @@ bash start-qiban.sh
 维护者生成解压版 ZIP：
 
 ```bash
-./scripts/package-release.sh v0.1.1
+./scripts/package-release.sh v0.1.2
 ```
 
 产物会生成到：
 
 ```text
-dist/qiban-companion-portable-v0.1.1.zip
+dist/qiban-companion-portable-v0.1.2.zip
 ```
 
 压缩包只包含可发布源码、启动脚本、静态资源和说明文档，不包含 `.git`、虚拟环境、运行日志、历史对话数据、测试截图或旧备份。
 
-别人使用时从 GitHub Releases 下载 `qiban-companion-portable-v0.1.1.zip`，解压后按系统双击启动即可。
+别人使用时从 GitHub Releases 下载 `qiban-companion-portable-v0.1.2.zip`，解压后按系统双击启动即可。
 
 ## 云端静态入口
 
 仓库根目录的 `index.html` 可直接用于 GitHub Pages / Netlify / 任意静态服务器。
 
-云端静态页面负责展示手机聊天和 3D 角色壁纸界面；真实语音、记忆和模型服务请连接本地电脑或随身小盒子的 `8766` 后端。
+云端静态页面负责展示手机聊天和 3D 角色壁纸界面；本地启动后，3D 角色壁纸的「声音」按钮会连接 `8766` 后端生成实际音频。
 
 ## 角色名
 

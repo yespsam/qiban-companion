@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#111614">
   <title>栖伴 · 3D 桌面壁纸</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2307c160'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' fill='white'%3E%E6%A0%96%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css?v=anime3d">
+  <link rel="stylesheet" href="./style.css?v=human3d">
 </head>
 <body>
   <main class="wallpaper" aria-label="栖伴 3D 桌面壁纸">
     <canvas id="scene" aria-hidden="true"></canvas>
     <section class="presence">
-      <p class="eyebrow">anime desktop companion</p>
+      <p class="eyebrow">virtual human companion</p>
       <h1 id="name">小栖</h1>
       <p id="line">我在桌面旁边，等你随时叫我。</p>
     </section>
@@ -27,10 +27,11 @@
         <button class="dock-btn" type="button" data-action="nod">点头</button>
         <button class="dock-btn" type="button" data-action="turn">转身</button>
         <button class="dock-btn" type="button" data-action="heart">回应</button>
+        <button class="dock-btn" type="button" data-action="voice">声音</button>
       </div>
       <span id="server-state" class="server-state">local standby</span>
     </section>
   </main>
-  <script type="module" src="./app.js?v=anime3d"></script>
+  <script type="module" src="./app.js?v=human3d"></script>
 </body>
 </html>
