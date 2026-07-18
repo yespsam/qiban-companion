@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 .playwright-cli/
 output/
+dist/
 *.zip
 ai-companion/backup-rel/
 ai-companion/SPEC.md

@@ -10,7 +10,21 @@ HOST="${QIBAN_HOST:-127.0.0.1}"
 
 mkdir -p "$RUN_DIR"
 
+check_python() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "未找到 python3。请先安装 Python 3.10+，然后重新运行。"
+    exit 1
+  fi
+  python3 - <<'PY'
+import sys
+version = sys.version_info
+if version < (3, 10):
+    print(f"提示：当前 Python 是 {version.major}.{version.minor}，推荐使用 Python 3.10+。")
+PY
+}
+
 is_listening() {
+  command -v lsof >/dev/null 2>&1 || return 1
   lsof -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
 }
 
@@ -70,6 +84,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 echo "栖伴正在启动..."
+
+check_python
 
 if [ "${QIBAN_REUSE_PORTS:-0}" != "1" ]; then
   stop_port "$API_PORT"
