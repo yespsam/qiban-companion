@@ -846,13 +846,15 @@ function activateLoadedModel(id) {
   modelState.active = entry;
   modelLayer.visible = true;
   avatar.visible = false;
-  ensureModelAnimations(id);
+  ensureModelAnimations(id, ['walk']);
+  window.setTimeout(() => ensureModelAnimations(id), 5000);
 }
 
 function preloadModels() {
-  Object.entries(modelAssets).forEach(([id, asset]) => {
+  const entries = Object.entries(modelAssets).sort(([id]) => (id === state.activePersona ? -1 : 1));
+  entries.forEach(([id, asset], index) => {
     if (!asset || !asset.model) return;
-    fetch(asset.model, { method: 'HEAD' })
+    const startLoad = () => fetch(asset.model, { method: 'HEAD' })
       .then((response) => {
         if (!response.ok) throw new Error('model not found');
         gltfLoader.load(asset.model, (gltf) => {
@@ -880,6 +882,7 @@ function preloadModels() {
       .catch(() => {
         if (state.activePersona === id) activateLoadedModel(id);
       });
+    window.setTimeout(startLoad, index === 0 ? 0 : 2800);
   });
 }
 
@@ -1117,12 +1120,12 @@ function updateModelPose(t, delta = 0) {
   addBoneRotation(entry, 'Spine01', 0.01 + breath * 0.18, 0, sway * 0.18);
   addBoneRotation(entry, 'Head', -state.pointerY * 0.1 * pointerLag, state.pointerX * 0.2 * pointerLag, -sway * 0.35);
   if (!basePoseApplied) {
-    addBoneRotation(entry, 'LeftShoulder', 0, 0, -0.68);
-    addBoneRotation(entry, 'RightShoulder', 0, 0, 0.68);
-    addBoneRotation(entry, 'LeftArm', 0.04, 0.08, -0.12);
-    addBoneRotation(entry, 'RightArm', 0.04, -0.08, 0.12);
-    addBoneRotation(entry, 'LeftForeArm', 0.06, 0, -0.08);
-    addBoneRotation(entry, 'RightForeArm', 0.06, 0, 0.08);
+    addBoneRotation(entry, 'LeftShoulder', 0, 0, -1.18);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, 1.18);
+    addBoneRotation(entry, 'LeftArm', 0.08, 0.08, -0.34);
+    addBoneRotation(entry, 'RightArm', 0.08, -0.08, 0.34);
+    addBoneRotation(entry, 'LeftForeArm', 0.1, 0, -0.16);
+    addBoneRotation(entry, 'RightForeArm', 0.1, 0, 0.16);
   }
 
   if (state.action === 'wave') {
