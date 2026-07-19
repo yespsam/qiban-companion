@@ -46,6 +46,7 @@ function resolveApiBase() {
 }
 
 const voiceApiEnabledInPage = enabledParam('voice', false);
+const browserVoiceFallbackEnabled = enabledParam('browserVoice', false);
 const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') === '1');
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
@@ -1401,13 +1402,35 @@ function stopCurrentAudio() {
 function finishSpeaking(status = '对话开') {
   state.currentAudio = null;
   state.speaking = false;
+  state.voiceReady = status !== '语音未接';
+  state.voiceError = '';
   serverStateEl.textContent = status;
+  updateDialogControls();
+}
+
+function markVoiceUnavailable(message = '语音未接', detail = '') {
+  state.currentAudio = null;
+  state.speaking = false;
+  state.voiceReady = false;
+  state.voiceError = message;
+  serverStateEl.textContent = message;
+  serverStateEl.title = detail;
+  updateDialogControls();
 }
 
 function updateDialogControls() {
   if (!dialogButton) return;
+  const needsRealVoice = state.dialogEnabled && !browserVoiceFallbackEnabled && (!voiceApiEnabledInPage || !!state.voiceError);
+  const label = !state.dialogEnabled
+    ? '对话关'
+    : state.speaking
+      ? '说话中'
+      : needsRealVoice
+        ? '语音未接'
+        : '对话开';
   dialogButton.classList.toggle('active', state.dialogEnabled);
-  dialogButton.textContent = state.dialogEnabled ? '对话开' : '对话关';
+  dialogButton.classList.toggle('warning', needsRealVoice);
+  dialogButton.textContent = label;
   dialogButton.setAttribute('aria-pressed', state.dialogEnabled ? 'true' : 'false');
 }
 
@@ -1438,15 +1461,24 @@ function requestVoice() {
   if (!state.dialogEnabled) {
     stopCurrentAudio();
     serverStateEl.textContent = '对话关';
+    state.voiceError = '';
+    updateDialogControls();
     return;
   }
   if (!voiceApiEnabledInPage) {
-    speakWithBrowserVoice(persona.voiceLine);
+    stopCurrentAudio();
+    if (browserVoiceFallbackEnabled) {
+      speakWithBrowserVoice(persona.voiceLine);
+      return;
+    }
+    markVoiceUnavailable('语音未接', '真实语音后端未开启：请使用 voice=1 并连接本地 API。');
     return;
   }
   stopCurrentAudio();
+  state.voiceError = '';
   serverStateEl.textContent = '本地语音';
   state.speaking = true;
+  updateDialogControls();
   fetch(`${voiceApiBase}/api/voice/speak`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1471,15 +1503,19 @@ function requestVoice() {
       finishSpeaking('本地语音');
     };
     serverStateEl.textContent = '正在说话';
+    updateDialogControls();
     audio.play().catch(() => {
       URL.revokeObjectURL(url);
-      finishSpeaking('点击后播放');
-      speakWithBrowserVoice(persona.voiceLine);
+      stopCurrentAudio();
+      markVoiceUnavailable('语音未接', '真实语音已返回，但浏览器阻止播放；请点击人物重试。');
     });
   }).catch(() => {
     stopCurrentAudio();
-    state.voiceError = '语音请求失败';
-    speakWithBrowserVoice(persona.voiceLine);
+    if (browserVoiceFallbackEnabled) {
+      speakWithBrowserVoice(persona.voiceLine);
+      return;
+    }
+    markVoiceUnavailable('语音未接', `真实语音 API 未连接：${voiceApiBase}`);
   });
 }
 
@@ -1487,10 +1523,17 @@ function checkVoiceStatus() {
   updateDialogControls();
   if (!state.dialogEnabled) {
     serverStateEl.textContent = '对话关';
+    state.voiceError = '';
+    updateDialogControls();
     return;
   }
   if (!voiceApiEnabledInPage) {
-    serverStateEl.textContent = '浏览器语音';
+    if (browserVoiceFallbackEnabled) {
+      serverStateEl.textContent = '浏览器语音';
+      updateDialogControls();
+      return;
+    }
+    markVoiceUnavailable('语音未接', '当前页面未开启 voice=1，已禁用浏览器机械声。');
     return;
   }
   fetch(`${voiceApiBase}/api/voice/status`)
@@ -1498,14 +1541,21 @@ function checkVoiceStatus() {
     .then((status) => {
       if (!status) return;
       state.voiceReady = !!status.enabled;
-      serverStateEl.textContent = status.enabled ? '本地语音' : '语音待机';
+      state.voiceError = status.enabled ? '' : '语音未接';
+      serverStateEl.textContent = status.enabled ? '本地语音' : '语音未接';
       if (status.cast && status.cast.voice) {
         serverStateEl.title = status.cast.voice;
       }
+      updateDialogControls();
     })
     .catch(() => {
-      state.voiceReady = false;
-      serverStateEl.textContent = '浏览器语音';
+      if (browserVoiceFallbackEnabled) {
+        state.voiceReady = false;
+        serverStateEl.textContent = '浏览器语音';
+        updateDialogControls();
+        return;
+      }
+      markVoiceUnavailable('语音未接', `无法连接真实语音 API：${voiceApiBase}`);
     });
 }
 

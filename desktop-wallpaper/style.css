@@ -139,6 +139,11 @@ h1 {
   font-weight: 700;
 }
 
+.dock-btn.warning.active {
+  background: var(--warm);
+  color: #17070d;
+}
+
 .server-state {
   display: none;
   padding: 0 10px;
