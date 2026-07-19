@@ -48,6 +48,7 @@ const voiceEnabledInPage = enabledParam('voice', false);
 const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') === '1');
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
+const stageEnabled = enabledParam('stage', false);
 
 const modelAssets = {
   female: {
@@ -78,10 +79,10 @@ const loopingModelActions = new Set(['walk', 'run', 'voice']);
 const gltfLoader = new GLTFLoader();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.06;
+renderer.toneMappingExposure = 1.12;
 renderer.setClearColor(0x000000, 0);
 
 const scene = new THREE.Scene();
@@ -115,10 +116,10 @@ const personas = {
     cheek: 0xff99ad,
     scale: 1,
     idlePoseTime: 0.18,
-    modelScaleDesktop: 1.02,
-    modelScaleMobile: 0.72,
-    modelYDesktop: 0.22,
-    modelYMobile: -0.12,
+    modelScaleDesktop: 1.14,
+    modelScaleMobile: 0.9,
+    modelYDesktop: -0.12,
+    modelYMobile: -0.08,
     shoulder: 0.88,
     hip: 0.82,
     stance: 0.18,
@@ -151,10 +152,10 @@ const personas = {
     cheek: 0xf0a996,
     scale: 1.04,
     idlePoseTime: 0.9,
-    modelScaleDesktop: 0.7,
-    modelScaleMobile: 0.7,
-    modelYDesktop: -0.46,
-    modelYMobile: -0.12,
+    modelScaleDesktop: 0.96,
+    modelScaleMobile: 0.94,
+    modelYDesktop: -0.42,
+    modelYMobile: -0.08,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -342,6 +343,8 @@ function makeHeartGeometry() {
 }
 
 function buildStage() {
+  if (!stageEnabled) return;
+
   rig.floor = addPlain(
     scene,
     new THREE.CircleGeometry(2.4, 96),
@@ -781,7 +784,7 @@ function normalizeLoadedModel(root) {
 
 function tuneTexture(texture, colorSpace = null) {
   if (!texture) return;
-  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 16);
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   texture.magFilter = THREE.LinearFilter;
   if (colorSpace) texture.colorSpace = colorSpace;
@@ -795,10 +798,10 @@ function enhanceLoadedMaterial(material) {
   tuneTexture(material.roughnessMap);
   tuneTexture(material.metalnessMap);
   if ('emissiveIntensity' in material) {
-    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.28);
+    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.12);
   }
   if ('roughness' in material) {
-    material.roughness = Math.max(0.48, Math.min(material.roughness || 0.68, 0.72));
+    material.roughness = Math.max(0.38, Math.min(material.roughness || 0.62, 0.68));
   }
   if ('metalness' in material) {
     material.metalness = Math.min(material.metalness || 0, 0.08);
@@ -1020,17 +1023,17 @@ function modelFrameScaleMultiplier() {
   const mobile = window.innerWidth < 720;
   if (mobile) {
     return {
-      wave: 0.76,
-      nod: 0.82,
-      heart: 0.82,
-      voice: 0.82
+      wave: 0.94,
+      nod: 0.96,
+      heart: 0.96,
+      voice: 0.96
     }[state.action] || 1;
   }
   const actionScale = {
-    wave: 0.86,
-    nod: 0.76,
-    heart: 0.76,
-    voice: 0.86
+    wave: 0.94,
+    nod: 0.9,
+    heart: 0.9,
+    voice: 0.94
   }[state.action] || 1;
   return actionScale;
 }
@@ -1039,10 +1042,10 @@ function modelFrameXOffset() {
   const mobile = window.innerWidth < 720;
   if (!mobile) return 0;
   return {
-    wave: -0.36,
-    nod: -0.12,
-    heart: -0.18,
-    voice: -0.14
+    wave: -0.76,
+    nod: -0.14,
+    heart: -0.2,
+    voice: -0.18
   }[state.action] || 0;
 }
 
@@ -1319,16 +1322,16 @@ function resize() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
-  camera.position.z = mobile ? 8.45 : 7.1;
-  camera.position.y = mobile ? 0.38 : 0.24;
-  avatar.position.set(mobile ? 0 : 0.76, mobile ? 0.34 : 0.3, 0);
-  avatar.scale.setScalar(persona.scale * (mobile ? 0.78 : 0.96));
-  modelLayer.position.set(mobile ? 0 : 0.76, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
+  camera.position.z = mobile ? 8.1 : 6.9;
+  camera.position.y = mobile ? 0.34 : 0.18;
+  avatar.position.set(0, mobile ? 0.34 : 0.3, 0);
+  avatar.scale.setScalar(persona.scale * (mobile ? 0.82 : 1.02));
+  modelLayer.position.set(0, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
   modelState.baseX = modelLayer.position.x;
   modelState.baseY = modelLayer.position.y;
   modelState.baseScale = persona.scale * (mobile ? persona.modelScaleMobile : persona.modelScaleDesktop);
   modelLayer.scale.setScalar(modelState.baseScale);
-  rig.heart.position.x = mobile ? 0 : 0.76;
+  rig.heart.position.x = 0;
   camera.updateProjectionMatrix();
 }
 
@@ -1345,10 +1348,12 @@ function animate(time) {
     avatar.rotation.y += (viewYaw - avatar.rotation.y) * 0.08;
   }
 
-  rig.floor.rotation.z = t * 0.12;
-  rig.orbit.rotation.z = t * 0.08;
-  rig.particles.rotation.y = t * 0.026;
-  rig.particles.rotation.x = Math.sin(t * 0.22) * 0.04;
+  if (rig.floor) rig.floor.rotation.z = t * 0.12;
+  if (rig.orbit) rig.orbit.rotation.z = t * 0.08;
+  if (rig.particles) {
+    rig.particles.rotation.y = t * 0.026;
+    rig.particles.rotation.x = Math.sin(t * 0.22) * 0.04;
+  }
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);

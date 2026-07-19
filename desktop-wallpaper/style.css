@@ -17,7 +17,7 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: #111614;
+  background: transparent;
   color: var(--ink);
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
@@ -27,27 +27,15 @@ body {
   width: 100vw;
   height: 100svh;
   overflow: hidden;
-  background: linear-gradient(138deg, #101512 0%, #1a2420 46%, #242030 100%);
+  background: transparent;
 }
 
 .wallpaper::before {
-  content: "";
-  position: absolute;
-  inset: -20%;
-  background:
-    repeating-linear-gradient(90deg, rgba(246, 240, 231, 0.055) 0 1px, transparent 1px 84px),
-    repeating-linear-gradient(0deg, rgba(246, 240, 231, 0.04) 0 1px, transparent 1px 84px);
-  opacity: 0.5;
-  transform: perspective(720px) rotateX(58deg) translateY(22%);
-  transform-origin: center bottom;
+  content: none;
 }
 
 .wallpaper::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(10, 14, 12, 0.74), transparent 42%, rgba(10, 14, 12, 0.16));
-  pointer-events: none;
+  content: none;
 }
 
 #scene {
@@ -58,6 +46,7 @@ body {
   display: block;
   cursor: pointer;
   touch-action: none;
+  background: transparent;
 }
 
 #scene:active {
