@@ -95,11 +95,11 @@ h1 {
   align-items: center;
   gap: 8px;
   max-width: calc(100vw - 24px);
-  padding: 8px;
+  padding: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--panel);
-  backdrop-filter: blur(16px);
+  background: rgba(8, 12, 10, 0.48);
+  backdrop-filter: blur(14px);
   transform: translateX(-50%);
 }
 
@@ -110,16 +110,17 @@ h1 {
 }
 
 .actions {
+  display: none;
   padding-left: 6px;
   border-left: 1px solid var(--line);
 }
 
 .dock-btn {
-  min-width: 64px;
-  height: 36px;
+  min-width: 62px;
+  height: 34px;
   border: 0;
   border-radius: 999px;
-  padding: 0 14px;
+  padding: 0 13px;
   background: transparent;
   color: var(--muted);
   font-size: 14px;
@@ -139,6 +140,7 @@ h1 {
 }
 
 .server-state {
+  display: none;
   padding: 0 10px;
   color: var(--muted);
   font-size: 12px;
@@ -156,8 +158,7 @@ h1 {
   }
 }
 
-.presence,
-.dock {
+.presence {
   display: none !important;
 }
 
@@ -184,12 +185,12 @@ h1 {
   }
 
   .dock {
-    width: calc(100vw - 18px);
-    display: grid;
-    grid-template-columns: 1fr;
-    justify-content: stretch;
+    width: auto;
+    max-width: calc(100vw - 18px);
+    display: flex;
+    justify-content: center;
     overflow: hidden;
-    border-radius: 22px;
+    border-radius: 999px;
     gap: 4px;
     padding: 6px;
     scrollbar-width: none;
@@ -200,25 +201,20 @@ h1 {
   }
 
   .dock-btn {
-    width: 100%;
+    width: auto;
     min-width: 0;
-    height: 30px;
-    padding: 0;
+    height: 32px;
+    padding: 0 12px;
     font-size: 12px;
   }
 
   .dock-group {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
     gap: 4px;
   }
 
   .actions {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding-top: 4px;
-    padding-left: 0;
-    border-top: 1px solid var(--line);
-    border-left: 0;
+    display: none;
   }
 
   .server-state {

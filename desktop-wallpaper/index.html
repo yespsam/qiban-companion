@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <title>栖伴 · 3D 桌面壁纸</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2307c160'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' fill='white'%3E%E6%A0%96%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css?v=transparent-hd-character-2">
+  <link rel="stylesheet" href="./style.css?v=persona-dialog-controls">
 </head>
 <body>
   <main class="wallpaper" aria-label="栖伴 3D 桌面壁纸">
@@ -17,9 +17,10 @@
       <p id="line">我在桌面旁边，等你随时叫我。</p>
     </section>
     <section class="dock" aria-label="桌面伴侣控制">
-      <div class="dock-group" aria-label="角色">
+      <div class="dock-group primary-controls" aria-label="角色和对话">
         <button class="dock-btn active" id="female-btn" type="button">小栖</button>
         <button class="dock-btn" id="male-btn" type="button">栖安</button>
+        <button class="dock-btn" id="dialog-btn" type="button" aria-pressed="false">对话关</button>
       </div>
       <div class="dock-group actions" aria-label="动作">
         <button class="dock-btn active" type="button" data-action="idle">待机</button>
@@ -34,6 +35,6 @@
       <span id="server-state" class="server-state">local standby</span>
     </section>
   </main>
-  <script type="module" src="./app.js?v=transparent-hd-character-2"></script>
+  <script type="module" src="./app.js?v=persona-dialog-controls"></script>
 </body>
 </html>

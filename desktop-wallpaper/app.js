@@ -5,6 +5,7 @@ const canvas = document.getElementById('scene');
 const nameEl = document.getElementById('name');
 const lineEl = document.getElementById('line');
 const serverStateEl = document.getElementById('server-state');
+const dialogButton = document.getElementById('dialog-btn');
 const personaButtons = {
   female: document.getElementById('female-btn'),
   male: document.getElementById('male-btn')
@@ -44,7 +45,7 @@ function resolveApiBase() {
   return `${protocol}//${host}:${apiPort}`;
 }
 
-const voiceEnabledInPage = enabledParam('voice', false);
+const voiceApiEnabledInPage = enabledParam('voice', false);
 const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') === '1');
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
@@ -165,7 +166,7 @@ const personas = {
 };
 
 const state = {
-  activePersona: params.get('persona') === 'male' ? 'male' : 'female',
+  activePersona: (params.get('persona') || storedValue('qiban-persona')) === 'male' ? 'male' : 'female',
   action: 'idle',
   actionStarted: 0,
   dragYaw: -0.08,
@@ -185,6 +186,7 @@ const state = {
 
 const modelState = {
   loaded: {},
+  loading: {},
   active: null,
   layer: null,
   baseX: 0,
@@ -267,6 +269,7 @@ const rightShin = new THREE.Group();
 scene.add(avatar);
 scene.add(modelLayer);
 modelLayer.visible = false;
+avatar.visible = false;
 avatar.add(body);
 body.add(head, leftArm, rightArm, leftLeg, rightLeg);
 leftArm.add(leftForearm);
@@ -720,6 +723,7 @@ function setVisible(parts, visible) {
 
 function setPersona(id) {
   state.activePersona = id;
+  storeValue('qiban-persona', id);
   const persona = personas[id];
   mats.hair.color.setHex(persona.hair);
   mats.hairAlt.color.setHex(persona.hairAlt);
@@ -745,6 +749,8 @@ function setPersona(id) {
   Object.entries(personaButtons).forEach(([key, button]) => {
     button.classList.toggle('active', key === id);
   });
+  updateDialogControls();
+  loadModel(id);
   activateLoadedModel(id);
   resize();
 }
@@ -835,7 +841,8 @@ function activateLoadedModel(id) {
   if (!entry) {
     modelState.active = null;
     modelLayer.visible = false;
-    avatar.visible = true;
+    modelLayer.clear();
+    avatar.visible = false;
     return;
   }
 
@@ -850,40 +857,50 @@ function activateLoadedModel(id) {
   window.setTimeout(() => ensureModelAnimations(id), 5000);
 }
 
-function preloadModels() {
-  const entries = Object.entries(modelAssets).sort(([id]) => (id === state.activePersona ? -1 : 1));
-  entries.forEach(([id, asset], index) => {
-    if (!asset || !asset.model) return;
-    const startLoad = () => fetch(asset.model, { method: 'HEAD' })
-      .then((response) => {
-        if (!response.ok) throw new Error('model not found');
-        gltfLoader.load(asset.model, (gltf) => {
-          const root = gltf.scene;
-          normalizeLoadedModel(root);
-          const entry = {
-            root,
-            bones: collectModelBones(root),
-            clips: gltf.animations || [],
-            animationClips: {},
-            animationRequests: {},
-            actions: {},
-            mixer: new THREE.AnimationMixer(root),
-            activeAnimation: ''
-          };
-          modelState.loaded[id] = entry;
-          if (state.activePersona === id) {
-            activateLoadedModel(id);
-            resize();
-          }
-        }, undefined, () => {
-          if (state.activePersona === id) activateLoadedModel(id);
-        });
-      })
-      .catch(() => {
+function loadModel(id) {
+  const asset = modelAssets[id];
+  if (!asset || !asset.model || modelState.loaded[id] || modelState.loading[id]) return;
+  modelState.loading[id] = true;
+  fetch(asset.model, { method: 'HEAD' })
+    .then((response) => {
+      if (!response.ok) throw new Error('model not found');
+      gltfLoader.load(asset.model, (gltf) => {
+        const root = gltf.scene;
+        normalizeLoadedModel(root);
+        const entry = {
+          root,
+          bones: collectModelBones(root),
+          clips: gltf.animations || [],
+          animationClips: {},
+          animationRequests: {},
+          actions: {},
+          mixer: new THREE.AnimationMixer(root),
+          activeAnimation: ''
+        };
+        modelState.loaded[id] = entry;
+        modelState.loading[id] = false;
+        if (state.activePersona === id) {
+          activateLoadedModel(id);
+          resize();
+        }
+      }, undefined, () => {
+        modelState.loading[id] = false;
         if (state.activePersona === id) activateLoadedModel(id);
       });
-    window.setTimeout(startLoad, index === 0 ? 0 : 2800);
-  });
+    })
+    .catch(() => {
+      modelState.loading[id] = false;
+      if (state.activePersona === id) activateLoadedModel(id);
+    });
+}
+
+function preloadModels() {
+  loadModel(state.activePersona);
+  window.setTimeout(() => {
+    Object.keys(modelAssets).forEach((id) => {
+      if (id !== state.activePersona) loadModel(id);
+    });
+  }, 4200);
 }
 
 function ensureModelAnimations(id, names = null) {
@@ -1029,7 +1046,7 @@ function modelFrameScaleMultiplier() {
       wave: 0.94,
       nod: 0.96,
       heart: 0.96,
-      voice: 0.96
+      voice: 0.9
     }[state.action] || 1;
   }
   const actionScale = {
@@ -1048,7 +1065,7 @@ function modelFrameXOffset() {
     wave: -0.76,
     nod: -0.14,
     heart: -0.2,
-    voice: -0.18
+    voice: -0.72
   }[state.action] || 0;
 }
 
@@ -1375,23 +1392,60 @@ function stopCurrentAudio() {
     try { state.currentAudio.pause(); } catch (error) {}
     state.currentAudio = null;
   }
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+  }
   state.speaking = false;
+}
+
+function finishSpeaking(status = '对话开') {
+  state.currentAudio = null;
+  state.speaking = false;
+  serverStateEl.textContent = status;
+}
+
+function updateDialogControls() {
+  if (!dialogButton) return;
+  dialogButton.classList.toggle('active', state.dialogEnabled);
+  dialogButton.textContent = state.dialogEnabled ? '对话开' : '对话关';
+  dialogButton.setAttribute('aria-pressed', state.dialogEnabled ? 'true' : 'false');
+}
+
+function speakWithBrowserVoice(text) {
+  if (!('speechSynthesis' in window) || !window.SpeechSynthesisUtterance) {
+    finishSpeaking('浏览器无语音');
+    return false;
+  }
+  const persona = personas[state.activePersona];
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'zh-CN';
+  utterance.rate = state.activePersona === 'female' ? 1.02 : 0.94;
+  utterance.pitch = state.activePersona === 'female' ? 1.18 : 0.88;
+  utterance.volume = 0.92;
+  utterance.onend = () => finishSpeaking('浏览器语音');
+  utterance.onerror = () => finishSpeaking('浏览器语音失败');
+  state.currentAudio = null;
+  state.speaking = true;
+  serverStateEl.textContent = '浏览器语音';
+  lineEl.textContent = persona.voiceLine;
+  window.speechSynthesis.speak(utterance);
+  return true;
 }
 
 function requestVoice() {
   const persona = personas[state.activePersona];
   if (!state.dialogEnabled) {
     stopCurrentAudio();
-    serverStateEl.textContent = 'dialog off';
+    serverStateEl.textContent = '对话关';
     return;
   }
-  if (!voiceEnabledInPage) {
-    lineEl.textContent = '启动本地后端后，我就可以出声。';
-    serverStateEl.textContent = 'voice offline';
+  if (!voiceApiEnabledInPage) {
+    speakWithBrowserVoice(persona.voiceLine);
     return;
   }
   stopCurrentAudio();
-  serverStateEl.textContent = 'voice loading';
+  serverStateEl.textContent = '本地语音';
   state.speaking = true;
   fetch(`${voiceApiBase}/api/voice/speak`, {
     method: 'POST',
@@ -1414,32 +1468,29 @@ function requestVoice() {
     state.currentAudio = audio;
     audio.onended = audio.onerror = () => {
       URL.revokeObjectURL(url);
-      state.currentAudio = null;
-      state.speaking = false;
-      serverStateEl.textContent = 'voice online';
+      finishSpeaking('本地语音');
     };
-    serverStateEl.textContent = 'speaking';
+    serverStateEl.textContent = '正在说话';
     audio.play().catch(() => {
       URL.revokeObjectURL(url);
-      state.currentAudio = null;
-      state.speaking = false;
-      serverStateEl.textContent = 'tap blocked';
+      finishSpeaking('点击后播放');
+      speakWithBrowserVoice(persona.voiceLine);
     });
   }).catch(() => {
-    state.speaking = false;
+    stopCurrentAudio();
     state.voiceError = '语音请求失败';
-    serverStateEl.textContent = 'voice error';
-    lineEl.textContent = '声音服务暂时没有接上，先检查 8766 后端。';
+    speakWithBrowserVoice(persona.voiceLine);
   });
 }
 
 function checkVoiceStatus() {
+  updateDialogControls();
   if (!state.dialogEnabled) {
-    serverStateEl.textContent = 'dialog off';
+    serverStateEl.textContent = '对话关';
     return;
   }
-  if (!voiceEnabledInPage) {
-    serverStateEl.textContent = 'offline wallpaper';
+  if (!voiceApiEnabledInPage) {
+    serverStateEl.textContent = '浏览器语音';
     return;
   }
   fetch(`${voiceApiBase}/api/voice/status`)
@@ -1447,14 +1498,14 @@ function checkVoiceStatus() {
     .then((status) => {
       if (!status) return;
       state.voiceReady = !!status.enabled;
-      serverStateEl.textContent = status.enabled ? 'voice online' : 'voice standby';
+      serverStateEl.textContent = status.enabled ? '本地语音' : '语音待机';
       if (status.cast && status.cast.voice) {
         serverStateEl.title = status.cast.voice;
       }
     })
     .catch(() => {
       state.voiceReady = false;
-      serverStateEl.textContent = 'voice offline';
+      serverStateEl.textContent = '浏览器语音';
     });
 }
 
@@ -1475,6 +1526,8 @@ function toggleDialog() {
   storeValue('qiban-dialog', state.dialogEnabled ? '1' : '0');
   if (!state.dialogEnabled) {
     stopCurrentAudio();
+  } else {
+    setAction('voice');
   }
   checkVoiceStatus();
 }
@@ -1522,6 +1575,9 @@ window.addEventListener('keydown', (event) => {
 
 personaButtons.female.addEventListener('click', () => setPersona('female'));
 personaButtons.male.addEventListener('click', () => setPersona('male'));
+if (dialogButton) {
+  dialogButton.addEventListener('click', toggleDialog);
+}
 actionButtons.forEach((button) => {
   button.addEventListener('click', () => setAction(button.dataset.action));
 });
