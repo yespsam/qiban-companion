@@ -56,10 +56,12 @@ python3 tools/generate_meshy_companion_models.py --characters female male --rig
 确认消耗点数并真正生成：
 
 ```bash
-python3 tools/generate_meshy_companion_models.py --characters female male --rig --yes
+python3 -u tools/generate_meshy_companion_models.py --characters female male --rig --yes
 ```
 
 生成完成后，脚本会下载 GLB/FBX 到 `meshy_output/`，并把最终 GLB 复制到 `desktop-wallpaper/assets/models/`。
+
+默认使用 GitHub Raw 上的公开参考图 URL，避免大图 base64 上传超时。若必须使用本地图片，可追加 `--use-data-uri`。
 
 ## 建模要求
 

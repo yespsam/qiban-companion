@@ -1,4 +1,5 @@
 import * as THREE from './vendor/three.module.js';
+import { GLTFLoader } from './vendor/GLTFLoader.js';
 
 const canvas = document.getElementById('scene');
 const nameEl = document.getElementById('name');
@@ -11,12 +12,76 @@ const personaButtons = {
 const actionButtons = [...document.querySelectorAll('[data-action]')];
 
 const params = new URLSearchParams(window.location.search);
-const voiceEnabledInPage = params.get('voice') === '1';
-const voiceApiBase = (params.get('api') || 'http://127.0.0.1:8766').replace(/\/+$/, '');
+
+function storedValue(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+}
+
+function storeValue(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+  }
+}
+
+function enabledParam(name, fallback = false) {
+  const raw = params.get(name);
+  if (raw === null) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
+}
+
+function resolveApiBase() {
+  const explicit = params.get('api');
+  if (explicit) return explicit.replace(/\/+$/, '');
+  const apiPort = params.get('apiPort') || params.get('port') || storedValue('qiban-api-port') || '8766';
+  if (apiPort === 'same') return window.location.origin.replace(/\/+$/, '');
+  const protocol = window.location.protocol === 'file:' ? 'http:' : window.location.protocol;
+  const host = params.get('apiHost') || window.location.hostname || '127.0.0.1';
+  return `${protocol}//${host}:${apiPort}`;
+}
+
+const voiceEnabledInPage = enabledParam('voice', false);
+const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') === '1');
+const voiceApiBase = resolveApiBase();
+const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
+
+const modelAssets = {
+  female: {
+    model: './assets/models/xiao-qi.glb',
+    animations: {
+      wave: './assets/models/xiao-qi-wave.glb',
+      nod: './assets/models/xiao-qi-nod.glb',
+      walk: './assets/models/xiao-qi-walk.glb',
+      run: './assets/models/xiao-qi-run.glb',
+      heart: './assets/models/xiao-qi-heart.glb',
+      voice: './assets/models/xiao-qi-voice.glb'
+    }
+  },
+  male: {
+    model: './assets/models/qi-an.glb',
+    animations: {
+      wave: './assets/models/qi-an-wave.glb',
+      nod: './assets/models/qi-an-nod.glb',
+      walk: './assets/models/qi-an-walk.glb',
+      run: './assets/models/qi-an-run.glb',
+      heart: './assets/models/qi-an-heart.glb',
+      voice: './assets/models/qi-an-voice.glb'
+    }
+  }
+};
+
+const loopingModelActions = new Set(['walk', 'run', 'voice']);
+const gltfLoader = new GLTFLoader();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.06;
 renderer.setClearColor(0x000000, 0);
 
 const scene = new THREE.Scene();
@@ -33,6 +98,8 @@ const personas = {
       idle: '我在桌面旁边，等你随时叫我。',
       wave: '看到你啦，我一直在。',
       nod: '嗯，我听着。',
+      walk: '我陪你走一会儿。',
+      run: '现在开始加速。',
       turn: '换个角度，也还是陪着你。',
       heart: '收到，我会认真回应你。',
       voice: '主人，我是小栖。这个声音，主人喜欢吗？'
@@ -47,6 +114,11 @@ const personas = {
     panel: 0xa9f6c2,
     cheek: 0xff99ad,
     scale: 1,
+    idlePoseTime: 0.18,
+    modelScaleDesktop: 1.02,
+    modelScaleMobile: 0.72,
+    modelYDesktop: 0.22,
+    modelYMobile: -0.12,
     shoulder: 0.88,
     hip: 0.82,
     stance: 0.18,
@@ -62,6 +134,8 @@ const personas = {
       idle: '我在这里，先把心放稳。',
       wave: '我看见你了，先慢慢来。',
       nod: '我明白，我们一步一步处理。',
+      walk: '我陪你走一段。',
+      run: '需要冲刺时，我跟得上。',
       turn: '我换个位置，继续守着你。',
       heart: '放心，我会把你的话放在心上。',
       voice: '主人，我是栖安。我会一直在这里陪你。'
@@ -76,6 +150,11 @@ const personas = {
     panel: 0xb7ffd1,
     cheek: 0xf0a996,
     scale: 1.04,
+    idlePoseTime: 0.9,
+    modelScaleDesktop: 0.7,
+    modelScaleMobile: 0.7,
+    modelYDesktop: -0.46,
+    modelYMobile: -0.12,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -85,7 +164,7 @@ const personas = {
 };
 
 const state = {
-  activePersona: 'female',
+  activePersona: params.get('persona') === 'male' ? 'male' : 'female',
   action: 'idle',
   actionStarted: 0,
   dragYaw: -0.08,
@@ -97,8 +176,20 @@ const state = {
   lastPointerMovedAt: 0,
   voiceReady: false,
   voiceError: '',
+  dialogEnabled: dialogEnabledInPage,
+  interactionCount: 0,
   speaking: false,
   currentAudio: null
+};
+
+const modelState = {
+  loaded: {},
+  active: null,
+  layer: null,
+  baseX: 0,
+  baseY: 0.22,
+  baseScale: 1,
+  lastTime: 0
 };
 
 const rig = {
@@ -141,22 +232,26 @@ const mats = {
   outline: new THREE.MeshBasicMaterial({ color: 0x120d12, side: THREE.BackSide })
 };
 
-const ambient = new THREE.AmbientLight(0xffffff, 1.1);
+const ambient = new THREE.AmbientLight(0xffffff, 0.82);
 scene.add(ambient);
 
-const keyLight = new THREE.DirectionalLight(0xf8ffe9, 3.8);
+const hemiLight = new THREE.HemisphereLight(0xf4fff5, 0x17211d, 1.16);
+scene.add(hemiLight);
+
+const keyLight = new THREE.DirectionalLight(0xf8ffe9, 3.15);
 keyLight.position.set(-3.2, 4.4, 4.4);
 scene.add(keyLight);
 
-const fillLight = new THREE.PointLight(0xffa4ba, 2, 8);
+const fillLight = new THREE.PointLight(0xffa4ba, 1.36, 8);
 fillLight.position.set(3.1, 1.8, 2.8);
 scene.add(fillLight);
 
-const rimLight = new THREE.PointLight(personas.female.accent, 3.2, 9);
+const rimLight = new THREE.PointLight(personas.female.accent, 2.65, 9);
 rimLight.position.set(2.8, -0.4, 3.2);
 scene.add(rimLight);
 
 const avatar = new THREE.Group();
+const modelLayer = new THREE.Group();
 const body = new THREE.Group();
 const head = new THREE.Group();
 const leftArm = new THREE.Group();
@@ -169,6 +264,8 @@ const leftShin = new THREE.Group();
 const rightShin = new THREE.Group();
 
 scene.add(avatar);
+scene.add(modelLayer);
+modelLayer.visible = false;
 avatar.add(body);
 body.add(head, leftArm, rightArm, leftLeg, rightLeg);
 leftArm.add(leftForearm);
@@ -177,9 +274,10 @@ leftLeg.add(leftShin);
 rightLeg.add(rightShin);
 
 Object.assign(rig, {
-  avatar, body, head, leftArm, rightArm, leftForearm, rightForearm,
+  avatar, modelLayer, body, head, leftArm, rightArm, leftForearm, rightForearm,
   leftLeg, rightLeg, leftShin, rightShin
 });
+modelState.layer = modelLayer;
 
 function outlinedMesh(geometry, material, outlineScale = 1.035) {
   const wrapper = new THREE.Group();
@@ -602,7 +700,7 @@ function buildHeart() {
   rig.heart.position.set(0, 1.68, 0.72);
   rig.heart.scale.setScalar(0.001);
   rig.heart.visible = false;
-  avatar.add(rig.heart);
+  scene.add(rig.heart);
 }
 
 function easeOutCubic(x) {
@@ -644,10 +742,12 @@ function setPersona(id) {
   Object.entries(personaButtons).forEach(([key, button]) => {
     button.classList.toggle('active', key === id);
   });
+  activateLoadedModel(id);
   resize();
 }
 
 function setAction(action) {
+  ensureModelAnimations(state.activePersona, [action]);
   state.action = action;
   state.actionStarted = performance.now() * 0.001;
   actionButtons.forEach((button) => {
@@ -665,6 +765,414 @@ function finishActionIfNeeded(elapsed, duration) {
       state.dragYaw += Math.PI * 2;
     }
     setAction('idle');
+  }
+}
+
+function normalizeLoadedModel(root) {
+  const box = new THREE.Box3().setFromObject(root);
+  const size = box.getSize(new THREE.Vector3());
+  if (!size.y) return;
+  const targetHeight = 1.08;
+  const scale = targetHeight / size.y;
+  const center = box.getCenter(new THREE.Vector3());
+  root.scale.setScalar(scale);
+  root.position.set(-center.x * scale, -box.min.y * scale - 1.65, -center.z * scale);
+}
+
+function tuneTexture(texture, colorSpace = null) {
+  if (!texture) return;
+  texture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  if (colorSpace) texture.colorSpace = colorSpace;
+  texture.needsUpdate = true;
+}
+
+function enhanceLoadedMaterial(material) {
+  tuneTexture(material.map, THREE.SRGBColorSpace);
+  tuneTexture(material.emissiveMap, THREE.SRGBColorSpace);
+  tuneTexture(material.normalMap);
+  tuneTexture(material.roughnessMap);
+  tuneTexture(material.metalnessMap);
+  if ('emissiveIntensity' in material) {
+    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.28);
+  }
+  if ('roughness' in material) {
+    material.roughness = Math.max(0.48, Math.min(material.roughness || 0.68, 0.72));
+  }
+  if ('metalness' in material) {
+    material.metalness = Math.min(material.metalness || 0, 0.08);
+  }
+  material.needsUpdate = true;
+}
+
+function collectModelBones(root) {
+  const bones = {};
+  root.traverse((object) => {
+    if (object.isBone) {
+      bones[object.name] = object;
+      object.userData.restPosition = object.position.clone();
+      object.userData.restRotation = object.rotation.clone();
+      object.userData.restScale = object.scale.clone();
+    }
+    if (object.isMesh || object.isSkinnedMesh) {
+      object.frustumCulled = false;
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.filter(Boolean).forEach((material) => {
+        material.side = THREE.DoubleSide;
+        enhanceLoadedMaterial(material);
+      });
+    }
+  });
+  return bones;
+}
+
+function activateLoadedModel(id) {
+  const entry = modelState.loaded[id];
+  if (!entry) {
+    modelState.active = null;
+    modelLayer.visible = false;
+    avatar.visible = true;
+    return;
+  }
+
+  if (entry.root.parent !== modelLayer) {
+    modelLayer.clear();
+    modelLayer.add(entry.root);
+  }
+  modelState.active = entry;
+  modelLayer.visible = true;
+  avatar.visible = false;
+  ensureModelAnimations(id);
+}
+
+function preloadModels() {
+  Object.entries(modelAssets).forEach(([id, asset]) => {
+    if (!asset || !asset.model) return;
+    fetch(asset.model, { method: 'HEAD' })
+      .then((response) => {
+        if (!response.ok) throw new Error('model not found');
+        gltfLoader.load(asset.model, (gltf) => {
+          const root = gltf.scene;
+          normalizeLoadedModel(root);
+          const entry = {
+            root,
+            bones: collectModelBones(root),
+            clips: gltf.animations || [],
+            animationClips: {},
+            animationRequests: {},
+            actions: {},
+            mixer: new THREE.AnimationMixer(root),
+            activeAnimation: ''
+          };
+          modelState.loaded[id] = entry;
+          if (state.activePersona === id) {
+            activateLoadedModel(id);
+            resize();
+          }
+        }, undefined, () => {
+          if (state.activePersona === id) activateLoadedModel(id);
+        });
+      })
+      .catch(() => {
+        if (state.activePersona === id) activateLoadedModel(id);
+      });
+  });
+}
+
+function ensureModelAnimations(id, names = null) {
+  const entry = modelState.loaded[id];
+  const asset = modelAssets[id];
+  if (!entry || !asset) return;
+  const requested = names ? new Set(names) : null;
+  Object.entries(asset.animations || {}).forEach(([name, url]) => {
+    if (requested && !requested.has(name)) return;
+    if (entry.actions[name] || entry.animationRequests[name]) return;
+    loadModelAnimation(entry, name, url);
+  });
+}
+
+function loadModelAnimation(entry, name, url) {
+  entry.animationRequests[name] = 'loading';
+  fetch(url, { method: 'HEAD' })
+    .then((response) => {
+      if (!response.ok) throw new Error('animation not found');
+      gltfLoader.load(url, (gltf) => {
+        const clip = (gltf.animations || []).find((item) => item.duration > 0) || gltf.animations[0];
+        if (!clip) {
+          entry.animationRequests[name] = 'failed';
+          return;
+        }
+        entry.animationClips[name] = clip;
+        const action = entry.mixer.clipAction(clip, entry.root);
+        const shouldLoop = loopingModelActions.has(name);
+        action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
+        action.clampWhenFinished = !shouldLoop;
+        entry.actions[name] = action;
+        entry.animationRequests[name] = 'loaded';
+      });
+    })
+    .catch(() => {
+      entry.animationRequests[name] = 'failed';
+    });
+}
+
+function playModelAnimation(entry, name) {
+  const selected = entry.actions[name];
+  if (!selected) return false;
+  if (entry.activeAnimation === name) return true;
+  Object.values(entry.actions).forEach((action) => {
+    action.paused = false;
+    action.stop();
+  });
+  const shouldLoop = loopingModelActions.has(name);
+  selected.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
+  selected.clampWhenFinished = !shouldLoop;
+  selected.enabled = true;
+  selected.reset().play();
+  selected.paused = false;
+  entry.activeAnimation = name;
+  return true;
+}
+
+function poseModelAnimation(entry, name, time) {
+  const action = entry.actions[name];
+  if (!action) return false;
+  Object.values(entry.actions).forEach((item) => {
+    if (item !== action) {
+      item.paused = false;
+      item.stop();
+    }
+  });
+  if (entry.activeAnimation !== `pose:${name}`) {
+    action.reset().play();
+    entry.activeAnimation = `pose:${name}`;
+  }
+  action.paused = false;
+  entry.mixer.setTime(Math.max(0, Math.min(time, action.getClip().duration - 0.001)));
+  action.paused = true;
+  return true;
+}
+
+function stopModelAnimation(entry) {
+  if (!entry.activeAnimation) return;
+  Object.values(entry.actions).forEach((action) => {
+    action.paused = false;
+    action.stop();
+  });
+  entry.activeAnimation = '';
+}
+
+function resetModelBone(entry, name) {
+  const bone = entry.bones[name];
+  if (!bone) return;
+  if (bone.userData.restPosition) bone.position.copy(bone.userData.restPosition);
+  if (bone.userData.restRotation) bone.rotation.copy(bone.userData.restRotation);
+  if (bone.userData.restScale) bone.scale.copy(bone.userData.restScale);
+}
+
+function resetModelBones(entry) {
+  Object.keys(entry.bones).forEach((name) => {
+    resetModelBone(entry, name);
+  });
+}
+
+function resetModelBonesByName(entry, names) {
+  names.forEach((name) => resetModelBone(entry, name));
+}
+
+function addBoneRotation(entry, name, x = 0, y = 0, z = 0) {
+  const bone = entry.bones[name];
+  if (!bone) return;
+  bone.rotation.x += x;
+  bone.rotation.y += y;
+  bone.rotation.z += z;
+}
+
+function updateModelLocomotionFallback(entry, elapsed, speed, intensity) {
+  resetModelBones(entry);
+  const gait = Math.sin(elapsed * speed);
+  addBoneRotation(entry, 'Spine', 0.04, 0, gait * 0.04);
+  addBoneRotation(entry, 'LeftArm', gait * 0.16 * intensity, 0.04, -0.18);
+  addBoneRotation(entry, 'RightArm', -gait * 0.16 * intensity, -0.04, 0.18);
+  addBoneRotation(entry, 'LeftLeg', -gait * 0.28 * intensity, 0, 0);
+  addBoneRotation(entry, 'RightLeg', gait * 0.28 * intensity, 0, 0);
+  addBoneRotation(entry, 'LeftFoot', Math.max(0, gait) * 0.12 * intensity, 0, 0);
+  addBoneRotation(entry, 'RightFoot', Math.max(0, -gait) * 0.12 * intensity, 0, 0);
+}
+
+function currentIdlePoseTime() {
+  if (forcedIdlePoseTime !== null) return forcedIdlePoseTime;
+  return personas[state.activePersona].idlePoseTime || 0;
+}
+
+function modelClipDuration(entry, name, fallback) {
+  const action = entry.actions[name];
+  const duration = action ? action.getClip().duration : 0;
+  return Number.isFinite(duration) && duration > 0 ? duration : fallback;
+}
+
+function addModelLookOffset(entry, pointerLag, sway, weight = 1) {
+  addBoneRotation(entry, 'Head', -state.pointerY * 0.08 * pointerLag * weight, state.pointerX * 0.15 * pointerLag * weight, -sway * 0.18 * weight);
+}
+
+function modelFrameScaleMultiplier() {
+  const mobile = window.innerWidth < 720;
+  if (mobile) {
+    return {
+      wave: 0.76,
+      nod: 0.82,
+      heart: 0.82,
+      voice: 0.82
+    }[state.action] || 1;
+  }
+  const actionScale = {
+    wave: 0.86,
+    nod: 0.76,
+    heart: 0.76,
+    voice: 0.86
+  }[state.action] || 1;
+  return actionScale;
+}
+
+function modelFrameXOffset() {
+  const mobile = window.innerWidth < 720;
+  if (!mobile) return 0;
+  return {
+    wave: -0.36,
+    nod: -0.12,
+    heart: -0.18,
+    voice: -0.14
+  }[state.action] || 0;
+}
+
+function applyModelFrameScale(multiplier, yOffset = 0) {
+  const targetScale = modelState.baseScale * multiplier;
+  const currentScale = modelLayer.scale.x || targetScale;
+  const nextScale = currentScale + (targetScale - currentScale) * 0.16;
+  modelLayer.scale.setScalar(nextScale);
+  modelLayer.position.x = modelState.baseX + modelFrameXOffset();
+  modelLayer.position.y = modelState.baseY - 1.65 * (modelState.baseScale - nextScale) + yOffset;
+}
+
+function updateModelPose(t, delta = 0) {
+  const entry = modelState.active;
+  if (!entry) return;
+
+  const elapsed = t - state.actionStarted;
+  const breath = Math.sin(t * 2.1) * 0.018;
+  const sway = Math.sin(t * 0.76) * 0.03;
+  const pointerLag = Math.max(0, 1 - (t - state.lastPointerMovedAt) / 3);
+
+  applyModelFrameScale(modelFrameScaleMultiplier(), breath * 0.2);
+  modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04;
+  modelLayer.rotation.z = sway * 0.08;
+
+  if (state.action === 'idle' && playModelAnimation(entry, 'idle')) {
+    entry.mixer.update(delta);
+    addModelLookOffset(entry, pointerLag, sway, 0.72);
+    return;
+  }
+
+  if (playModelAnimation(entry, state.action)) {
+    entry.mixer.update(delta);
+    const locomotion = state.action === 'walk' || state.action === 'run';
+    if (locomotion) {
+      applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9)) * 0.01);
+    }
+    addModelLookOffset(entry, pointerLag, sway, state.action === 'voice' ? 0.45 : 0.65);
+    if (state.action === 'voice') {
+      if (!state.speaking) finishActionIfNeeded(elapsed, 2.1);
+    } else if (state.action !== 'idle') {
+      const fallback = state.action === 'walk' ? 3.8 : state.action === 'run' ? 2.8 : 3.2;
+      finishActionIfNeeded(elapsed, modelClipDuration(entry, state.action, fallback));
+    }
+    return;
+  }
+
+  if (state.action === 'walk' || state.action === 'run') {
+    const duration = state.action === 'walk' ? 3.8 : 2.8;
+    applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9)) * 0.01);
+    updateModelLocomotionFallback(entry, elapsed, state.action === 'walk' ? 6 : 10, state.action === 'walk' ? 1 : 1.35);
+    finishActionIfNeeded(elapsed, duration);
+    return;
+  }
+
+  const basePoseApplied = poseModelAnimation(entry, 'walk', currentIdlePoseTime());
+  if (basePoseApplied) {
+    resetModelBonesByName(entry, [
+      'Hips', 'Spine', 'Spine01', 'Spine02', 'neck', 'Head',
+      'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase',
+      'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'
+    ]);
+  } else {
+    stopModelAnimation(entry);
+    resetModelBones(entry);
+  }
+
+  addBoneRotation(entry, 'Spine', 0.02 + breath * 0.22, 0, sway * 0.22);
+  addBoneRotation(entry, 'Spine01', 0.01 + breath * 0.18, 0, sway * 0.18);
+  addBoneRotation(entry, 'Head', -state.pointerY * 0.1 * pointerLag, state.pointerX * 0.2 * pointerLag, -sway * 0.35);
+  if (!basePoseApplied) {
+    addBoneRotation(entry, 'LeftShoulder', 0, 0, -0.68);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, 0.68);
+    addBoneRotation(entry, 'LeftArm', 0.04, 0.08, -0.12);
+    addBoneRotation(entry, 'RightArm', 0.04, -0.08, 0.12);
+    addBoneRotation(entry, 'LeftForeArm', 0.06, 0, -0.08);
+    addBoneRotation(entry, 'RightForeArm', 0.06, 0, 0.08);
+  }
+
+  if (state.action === 'wave') {
+    const duration = 2.4;
+    const p = Math.min(elapsed / 2.4, 1);
+    const envelope = Math.sin(p * Math.PI);
+    addBoneRotation(entry, 'Spine01', 0, 0, -0.05 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.34 * envelope);
+    addBoneRotation(entry, 'RightArm', -0.24 * envelope, -0.08 * envelope, -0.7 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.16 * envelope, 0, -0.3 * envelope + Math.sin(elapsed * 12) * 0.18 * envelope);
+    addBoneRotation(entry, 'RightHand', 0, 0, Math.sin(elapsed * 16) * 0.1 * envelope);
+    addBoneRotation(entry, 'Head', 0, 0, 0.035 * envelope);
+    finishActionIfNeeded(elapsed, duration);
+  }
+
+  if (state.action === 'nod') {
+    const duration = 1.55;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = Math.sin(p * Math.PI);
+    addBoneRotation(entry, 'Head', Math.sin(p * Math.PI * 4) * 0.16 * envelope, 0, 0);
+    finishActionIfNeeded(elapsed, duration);
+  }
+
+  if (state.action === 'turn') {
+    const duration = 2.15;
+    const p = Math.min(elapsed / duration, 1);
+    modelLayer.rotation.y = state.dragYaw + easeInOut(p) * Math.PI * 2;
+    finishActionIfNeeded(elapsed, duration);
+  }
+
+  if (state.action === 'heart') {
+    const duration = 2.25;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = Math.sin(p * Math.PI);
+    addBoneRotation(entry, 'Spine', 0.025 * envelope, 0, 0);
+    addBoneRotation(entry, 'LeftArm', -0.2 * envelope, 0.1 * envelope, 0.34 * envelope);
+    addBoneRotation(entry, 'RightArm', -0.2 * envelope, -0.1 * envelope, -0.34 * envelope);
+    addBoneRotation(entry, 'LeftForeArm', -0.12 * envelope, 0, -0.28 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.12 * envelope, 0, 0.28 * envelope);
+    rig.heart.visible = true;
+    rig.heart.position.y = 1.7 + easeOutCubic(p) * 0.34;
+    rig.heart.scale.setScalar(0.2 * envelope + 0.001);
+    finishActionIfNeeded(elapsed, duration);
+  }
+
+  if (state.action === 'voice') {
+    const duration = state.speaking ? 4.2 : 2.1;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = Math.sin(p * Math.PI);
+    addBoneRotation(entry, 'Head', Math.sin(t * 9) * 0.018 * (state.speaking ? 1 : envelope), 0, 0);
+    addBoneRotation(entry, 'RightArm', -0.16 * envelope, -0.06 * envelope, -0.22 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.1 * envelope, 0, -0.18 * envelope);
+    if (!state.speaking) finishActionIfNeeded(elapsed, duration);
   }
 }
 
@@ -731,6 +1239,21 @@ function updateBasePose(t) {
 function updateActionPose(t) {
   const elapsed = t - state.actionStarted;
 
+  if (state.action === 'walk' || state.action === 'run') {
+    const duration = state.action === 'walk' ? 3.8 : 2.8;
+    const speed = state.action === 'walk' ? 6 : 10;
+    const stride = state.action === 'walk' ? 0.34 : 0.48;
+    const gait = Math.sin(elapsed * speed);
+    body.position.y += Math.abs(gait) * (state.action === 'walk' ? 0.018 : 0.032);
+    leftArm.rotation.z += gait * 0.3;
+    rightArm.rotation.z -= gait * 0.3;
+    leftLeg.rotation.x = -gait * stride;
+    rightLeg.rotation.x = gait * stride;
+    leftShin.rotation.x = Math.max(0, gait) * 0.24;
+    rightShin.rotation.x = Math.max(0, -gait) * 0.24;
+    finishActionIfNeeded(elapsed, duration);
+  }
+
   if (state.action === 'wave') {
     const duration = 2.4;
     const p = Math.min(elapsed / duration, 1);
@@ -792,22 +1315,32 @@ function updateActionPose(t) {
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
+  const persona = personas[state.activePersona];
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
   camera.position.z = mobile ? 8.45 : 7.1;
   camera.position.y = mobile ? 0.38 : 0.24;
   avatar.position.set(mobile ? 0 : 0.76, mobile ? 0.34 : 0.3, 0);
-  avatar.scale.setScalar(personas[state.activePersona].scale * (mobile ? 0.78 : 0.96));
+  avatar.scale.setScalar(persona.scale * (mobile ? 0.78 : 0.96));
+  modelLayer.position.set(mobile ? 0 : 0.76, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
+  modelState.baseX = modelLayer.position.x;
+  modelState.baseY = modelLayer.position.y;
+  modelState.baseScale = persona.scale * (mobile ? persona.modelScaleMobile : persona.modelScaleDesktop);
+  modelLayer.scale.setScalar(modelState.baseScale);
+  rig.heart.position.x = mobile ? 0 : 0.76;
   camera.updateProjectionMatrix();
 }
 
 function animate(time) {
   const t = time * 0.001;
+  const delta = modelState.lastTime ? Math.min(t - modelState.lastTime, 0.05) : 0;
+  modelState.lastTime = t;
   updateBasePose(t);
-  updateActionPose(t);
+  if (!modelState.active) updateActionPose(t);
+  updateModelPose(t, delta);
 
-  if (state.action !== 'turn') {
+  if (state.action !== 'turn' && !modelState.active) {
     const viewYaw = state.dragYaw + state.pointerX * 0.04;
     avatar.rotation.y += (viewYaw - avatar.rotation.y) * 0.08;
   }
@@ -839,6 +1372,11 @@ function stopCurrentAudio() {
 
 function requestVoice() {
   const persona = personas[state.activePersona];
+  if (!state.dialogEnabled) {
+    stopCurrentAudio();
+    serverStateEl.textContent = 'dialog off';
+    return;
+  }
   if (!voiceEnabledInPage) {
     lineEl.textContent = '启动本地后端后，我就可以出声。';
     serverStateEl.textContent = 'voice offline';
@@ -888,6 +1426,10 @@ function requestVoice() {
 }
 
 function checkVoiceStatus() {
+  if (!state.dialogEnabled) {
+    serverStateEl.textContent = 'dialog off';
+    return;
+  }
   if (!voiceEnabledInPage) {
     serverStateEl.textContent = 'offline wallpaper';
     return;
@@ -906,6 +1448,27 @@ function checkVoiceStatus() {
       state.voiceReady = false;
       serverStateEl.textContent = 'voice offline';
     });
+}
+
+function interactWithCompanion() {
+  const silentActions = modelState.active ? ['wave', 'nod', 'heart', 'walk', 'turn', 'run'] : ['wave', 'nod', 'heart', 'turn'];
+  const dialogActions = modelState.active ? ['voice', 'nod', 'heart', 'wave'] : ['wave', 'nod', 'heart'];
+  const actions = state.dialogEnabled ? dialogActions : silentActions;
+  const action = actions[state.interactionCount % actions.length];
+  state.interactionCount += 1;
+  setAction(action);
+  if (state.dialogEnabled && action !== 'voice') {
+    requestVoice();
+  }
+}
+
+function toggleDialog() {
+  state.dialogEnabled = !state.dialogEnabled;
+  storeValue('qiban-dialog', state.dialogEnabled ? '1' : '0');
+  if (!state.dialogEnabled) {
+    stopCurrentAudio();
+  }
+  checkVoiceStatus();
 }
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -933,13 +1496,21 @@ canvas.addEventListener('pointercancel', () => {
 });
 
 canvas.addEventListener('click', () => {
-  if (state.action === 'idle') {
-    setAction('wave');
-  }
+  interactWithCompanion();
 });
 
 window.addEventListener('pointermove', updatePointer);
 window.addEventListener('resize', resize);
+window.addEventListener('keydown', (event) => {
+  const key = event.key.toLowerCase();
+  if (key === 'd') {
+    toggleDialog();
+  } else if (key === '1') {
+    setPersona('female');
+  } else if (key === '2') {
+    setPersona('male');
+  }
+});
 
 personaButtons.female.addEventListener('click', () => setPersona('female'));
 personaButtons.male.addEventListener('click', () => setPersona('male'));
@@ -949,6 +1520,7 @@ actionButtons.forEach((button) => {
 
 buildStage();
 buildCharacter();
+preloadModels();
 setPersona(state.activePersona);
 setAction('idle');
 checkVoiceStatus();

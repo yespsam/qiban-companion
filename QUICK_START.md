@@ -4,7 +4,7 @@
 
 ## 1. 解压
 
-把 `qiban-companion-portable-v0.1.2.zip` 解压到一个普通文件夹，例如桌面或文档目录。
+把 `qiban-companion-portable-v0.2.0.zip` 解压到一个普通文件夹，例如桌面或文档目录。
 
 ## 2. 启动
 
@@ -30,13 +30,28 @@ bash start-qiban.sh
 
 ## 3. 打开的入口
 
-启动成功后会自动打开：
+启动成功后会自动打开一个纯人物入口：
 
-- 手机聊天：`http://127.0.0.1:8765/companion-mobile-demo/`
-- 3D 角色壁纸：`http://127.0.0.1:8765/desktop-wallpaper/`
-- 本地控制台：`http://127.0.0.1:8766/`
+```text
+http://127.0.0.1:8765/?dialog=1&voice=1&persona=female&api=http://127.0.0.1:8766
+```
 
-3D 角色壁纸支持切换「小栖 / 栖安」、待机、挥手、点头、转身、回应和声音试听。运行时请保持启动窗口打开；关闭窗口或按提示停止后，语音、记忆和模型后端也会停止。
+画面不会显示按钮、标题或状态字符。点击人物即可互动；打开对话和语音时会连接本地 API 出声，关闭时只保留静默动作。运行时请保持启动窗口打开；关闭窗口或按提示停止后，语音、记忆和模型后端也会停止。
+
+`v0.2.0` 已内置男女二次元 3D 角色和整身动作，第一次打开时模型文件较大，等待几秒加载完成即可。
+
+常用开关：
+
+```bash
+# macOS / Linux
+QIBAN_DIALOG=0 QIBAN_VOICE=0 bash start-qiban.sh
+QIBAN_STATIC_PORT=9000 QIBAN_API_PORT=9001 bash start-qiban.sh
+```
+
+```powershell
+# Windows PowerShell
+$env:QIBAN_DIALOG="0"; $env:QIBAN_VOICE="0"; .\start-qiban.ps1
+```
 
 ## 4. 需要准备
 
@@ -65,5 +80,5 @@ $env:QIBAN_HOST="0.0.0.0"; .\start-qiban.ps1
 然后在手机浏览器打开：
 
 ```text
-http://电脑局域网IP:8765/companion-mobile-demo/
+http://电脑局域网IP:8765/?dialog=1&voice=1&api=http://电脑局域网IP:8766
 ```

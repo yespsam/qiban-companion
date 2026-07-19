@@ -6,6 +6,9 @@ $RunDir = Join-Path $Root ".run"
 $StaticPort = if ($env:QIBAN_STATIC_PORT) { [int]$env:QIBAN_STATIC_PORT } else { 8765 }
 $ApiPort = if ($env:QIBAN_API_PORT) { [int]$env:QIBAN_API_PORT } else { 8766 }
 $BindHost = if ($env:QIBAN_HOST) { $env:QIBAN_HOST } else { "127.0.0.1" }
+$Dialog = if ($env:QIBAN_DIALOG) { $env:QIBAN_DIALOG } else { "1" }
+$Voice = if ($env:QIBAN_VOICE) { $env:QIBAN_VOICE } else { "1" }
+$Persona = if ($env:QIBAN_PERSONA) { $env:QIBAN_PERSONA } else { "female" }
 
 New-Item -ItemType Directory -Force -Path $RunDir | Out-Null
 
@@ -117,14 +120,11 @@ try {
 
   Wait-Http "http://$BindHost`:$StaticPort/"
 
-  $mobileUrl = "http://$BindHost`:$StaticPort/companion-mobile-demo/"
-  $wallpaperUrl = "http://$BindHost`:$StaticPort/desktop-wallpaper/?voice=1"
-  $consoleUrl = "http://$BindHost`:$ApiPort/"
+  $apiUrl = "http://$BindHost`:$ApiPort"
+  $wallpaperUrl = "http://$BindHost`:$StaticPort/?dialog=$Dialog&voice=$Voice&persona=$Persona&api=$apiUrl"
 
-  Write-Host "手机聊天: $mobileUrl"
-  Write-Host "3D 角色:  $wallpaperUrl"
-  Write-Host "控制台:   $consoleUrl"
-  Start-Process $mobileUrl
+  Write-Host "人物入口: $wallpaperUrl"
+  Write-Host "API 服务: $apiUrl"
   Start-Process $wallpaperUrl
 
   Read-Host "保持此窗口打开即可持续运行。按 Enter 停止栖伴"

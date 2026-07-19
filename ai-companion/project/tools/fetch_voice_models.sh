@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermes 伴侣 · 声线模型下载脚本（SPEC §3.7b 配套）
+# 栖伴 · 声线模型下载脚本（SPEC §3.7b 配套）
 # 从 ModelScope（AI-Hobbyist GPT-SoVITS 模型合集）下载 6 个成品声线模型：
 #   萝莉音·可莉 / 御姐音·八重神子 / 搞笑女·胡桃 / 少年音·温迪 / 大叔音·钟离 / 搞笑男·荒泷一斗
 #
@@ -58,7 +58,7 @@ cat <<'EOF'
 ✅ 全部完成。使用方式：
 A. 完整权重（推荐）：.ckpt 放入 GPT-SoVITS 的 GPT_weights_v4，
    .pth 放入 SoVITS_weights_v4，推理界面选角色合成；
-   Hermes 侧 settings.yaml 设 tts_engine: clone，clone_api_base 指向该服务。
+   栖伴侧 settings.yaml 设 tts_engine: clone，clone_api_base 指向该服务。
 B. 零样本：启动 GPT-SoVITS api.py 后，用角色目录里的【默认】*.wav 上传：
    curl -X POST "http://127.0.0.1:8000/api/voice/upload?target=female_companion" \
         -H "Content-Type: audio/wav" --data-binary "@voice-models/loli_萝莉音_可莉/【默认】xxx.wav"

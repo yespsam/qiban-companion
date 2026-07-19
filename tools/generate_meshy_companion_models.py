@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_ROOT = ROOT / "meshy_output"
 MODEL_DIR = ROOT / "desktop-wallpaper" / "assets" / "models"
 API_BASE = "https://api.meshy.ai"
+SESSION = None
 
 
 CHARACTERS: dict[str, dict[str, str]] = {
@@ -30,6 +31,7 @@ CHARACTERS: dict[str, dict[str, str]] = {
         "slug": "xiao-qi",
         "name": "小栖",
         "front": "modeling/reference/xiao-qi-front-clean.png",
+        "front_url": "https://raw.githubusercontent.com/yespsam/qiban-companion/main/modeling/reference/xiao-qi-front-clean.png",
         "back": "modeling/reference/xiao-qi-back.png",
         "texture_prompt": (
             "High quality anime virtual human girl, not chibi, realistic 7-head "
@@ -43,6 +45,7 @@ CHARACTERS: dict[str, dict[str, str]] = {
         "slug": "qi-an",
         "name": "栖安",
         "front": "modeling/reference/qi-an-front.png",
+        "front_url": "https://raw.githubusercontent.com/yespsam/qiban-companion/main/modeling/reference/qi-an-front.png",
         "back": "modeling/reference/qi-an-back.png",
         "texture_prompt": (
             "High quality anime virtual human young man, not chibi, realistic "
@@ -89,7 +92,12 @@ def data_uri(path: Path) -> str:
 def request_json(method: str, endpoint: str, key: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
     import requests
 
-    response = requests.request(
+    global SESSION
+    if SESSION is None:
+        SESSION = requests.Session()
+        SESSION.trust_env = False
+
+    response = SESSION.request(
         method,
         f"{API_BASE}{endpoint}",
         headers={"Authorization": f"Bearer {key}"},
@@ -118,8 +126,13 @@ def poll_task(endpoint: str, task_id: str, key: str) -> dict[str, Any]:
 def download(url: str, dest: Path) -> None:
     import requests
 
+    global SESSION
+    if SESSION is None:
+        SESSION = requests.Session()
+        SESSION.trust_env = False
+
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True, timeout=120) as response:
+    with SESSION.get(url, stream=True, timeout=120) as response:
         response.raise_for_status()
         with dest.open("wb") as handle:
             for chunk in response.iter_content(chunk_size=1024 * 512):
@@ -129,11 +142,28 @@ def download(url: str, dest: Path) -> None:
 
 def model_urls_from(task: dict[str, Any]) -> dict[str, str]:
     urls = dict(task.get("model_urls") or {})
-    if task.get("rigged_character_glb_url"):
-        urls["glb"] = task["rigged_character_glb_url"]
-    if task.get("rigged_character_fbx_url"):
-        urls["fbx"] = task["rigged_character_fbx_url"]
+    result = task.get("result") if isinstance(task.get("result"), dict) else {}
+    for source in (task, result):
+        if source.get("rigged_character_glb_url"):
+            urls["glb"] = source["rigged_character_glb_url"]
+        if source.get("rigged_character_fbx_url"):
+            urls["fbx"] = source["rigged_character_fbx_url"]
     return urls
+
+
+def animation_urls_from(task: dict[str, Any]) -> dict[str, dict[str, str]]:
+    result = task.get("result") if isinstance(task.get("result"), dict) else {}
+    animations = result.get("basic_animations") if isinstance(result.get("basic_animations"), dict) else {}
+    return {
+        "walk": {
+            "glb": animations.get("walking_glb_url", ""),
+            "fbx": animations.get("walking_fbx_url", ""),
+        },
+        "run": {
+            "glb": animations.get("running_glb_url", ""),
+            "fbx": animations.get("running_fbx_url", ""),
+        },
+    }
 
 
 def create_character(character_id: str, args: argparse.Namespace, key: str, run_dir: Path) -> None:
@@ -147,7 +177,7 @@ def create_character(character_id: str, args: argparse.Namespace, key: str, run_
         raise FileNotFoundError(front)
 
     payload = {
-        "image_url": data_uri(front),
+        "image_url": data_uri(front) if args.use_data_uri else spec["front_url"],
         "ai_model": "meshy-6",
         "topology": "quad",
         "target_polycount": args.polycount,
@@ -197,6 +227,19 @@ def create_character(character_id: str, args: argparse.Namespace, key: str, run_
         shutil.copy(fbx_path, MODEL_DIR / f"{slug}.fbx")
         print(f"Saved {fbx_path}")
 
+    if args.rig:
+        for animation_name, formats in animation_urls_from(final_task).items():
+            for fmt, url in formats.items():
+                if not url:
+                    continue
+                path = char_dir / f"{slug}-{animation_name}.{fmt}"
+                download(url, path)
+                if fmt == "glb":
+                    shutil.copy(path, MODEL_DIR / f"{slug}-{animation_name}.glb")
+                    print(f"Copied to {MODEL_DIR / f'{slug}-{animation_name}.glb'}")
+                else:
+                    print(f"Saved {path}")
+
     metadata = {
         "character": character_id,
         "name": spec["name"],
@@ -214,6 +257,7 @@ def main() -> int:
     parser.add_argument("--rig", action="store_true", help="Run Meshy Auto-Rigging after Image-to-3D.")
     parser.add_argument("--polycount", type=int, default=70000)
     parser.add_argument("--hd-texture", action="store_true", help="Request 4K base color texture.")
+    parser.add_argument("--use-data-uri", action="store_true", help="Upload the local reference image as a base64 data URI.")
     parser.add_argument("--yes", action="store_true", help="Actually spend Meshy credits.")
     args = parser.parse_args()
 

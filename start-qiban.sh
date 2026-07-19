@@ -7,6 +7,9 @@ RUN_DIR="$ROOT/.run"
 STATIC_PORT="${QIBAN_STATIC_PORT:-8765}"
 API_PORT="${QIBAN_API_PORT:-8766}"
 HOST="${QIBAN_HOST:-127.0.0.1}"
+DIALOG="${QIBAN_DIALOG:-1}"
+VOICE="${QIBAN_VOICE:-1}"
+PERSONA="${QIBAN_PERSONA:-female}"
 
 mkdir -p "$RUN_DIR"
 
@@ -107,16 +110,13 @@ wait_for_http "http://$HOST:$API_PORT/api/state"
 STATIC_PID="$!"
 wait_for_http "http://$HOST:$STATIC_PORT/"
 
-MOBILE_URL="http://$HOST:$STATIC_PORT/companion-mobile-demo/"
-WALLPAPER_URL="http://$HOST:$STATIC_PORT/desktop-wallpaper/?voice=1"
-CONSOLE_URL="http://$HOST:$API_PORT/"
+API_URL="http://$HOST:$API_PORT"
+WALLPAPER_URL="http://$HOST:$STATIC_PORT/?dialog=$DIALOG&voice=$VOICE&persona=$PERSONA&api=$API_URL"
 
-echo "手机聊天: $MOBILE_URL"
-echo "3D 角色:  $WALLPAPER_URL"
-echo "控制台:   $CONSOLE_URL"
+echo "人物入口: $WALLPAPER_URL"
+echo "API 服务: $API_URL"
 
 if command -v open >/dev/null 2>&1; then
-  open "$MOBILE_URL"
   open "$WALLPAPER_URL"
 fi
 

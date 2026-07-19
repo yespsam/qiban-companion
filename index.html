@@ -4,104 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101512">
-  <title>栖伴 · 随身 AI 伴侣</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2307c160'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' fill='white'%3E%E6%A0%96%3C/text%3E%3C/svg%3E">
-  <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; }
-    body {
-      background: #101512;
-      color: #f7f1e7;
-      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
-    }
-    .hero {
-      min-height: 100svh;
-      display: grid;
-      grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1fr);
-      align-items: center;
-      gap: clamp(28px, 5vw, 72px);
-      padding: clamp(28px, 6vw, 82px);
-      background:
-        linear-gradient(90deg, rgba(16, 21, 18, 0.98), rgba(16, 21, 18, 0.72) 42%, rgba(16, 21, 18, 0.4)),
-        url("./desktop-wallpaper/assets/xiao-qi-avatar.png") center right / cover no-repeat;
-    }
-    .copy { max-width: 560px; }
-    .eyebrow {
-      margin: 0 0 14px;
-      color: #07c160;
-      font-size: 13px;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-    }
-    h1 {
-      margin: 0;
-      font-size: clamp(64px, 12vw, 144px);
-      line-height: 0.9;
-      letter-spacing: 0;
-    }
-    .lead {
-      margin: 22px 0 34px;
-      max-width: 460px;
-      color: #cbd2ca;
-      font-size: clamp(17px, 2vw, 23px);
-      line-height: 1.55;
-    }
-    .actions { display: flex; gap: 12px; flex-wrap: wrap; }
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 46px;
-      border-radius: 999px;
-      padding: 0 18px;
-      background: #07c160;
-      color: #06110a;
-      font-weight: 750;
-    }
-    .btn.secondary {
-      background: rgba(247, 241, 231, 0.1);
-      color: #f7f1e7;
-      border: 1px solid rgba(247, 241, 231, 0.2);
-    }
-    .notes {
-      align-self: end;
-      justify-self: stretch;
-      max-width: 520px;
-      padding: 18px 0 0;
-      color: #aeb9b0;
-      font-size: 14px;
-      line-height: 1.7;
-    }
-    @media (max-width: 820px) {
-      .hero {
-        grid-template-columns: 1fr;
-        align-items: end;
-        background-position: center top;
-        padding: 28px 22px;
-      }
-      .copy { padding-top: 42svh; }
-      .notes { font-size: 13px; }
-    }
-  </style>
+  <title>栖伴</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E">
 </head>
 <body>
-  <main class="hero">
-    <section class="copy">
-      <p class="eyebrow">local-first companion</p>
-      <h1>栖伴</h1>
-      <p class="lead">一个可以在手机、3D 角色壁纸和随身小盒子里打开的 AI 伴侣原型。</p>
-      <div class="actions">
-        <a class="btn" href="./companion-mobile-demo/">打开手机聊天</a>
-        <a class="btn secondary" href="./desktop-wallpaper/">打开 3D 角色</a>
-      </div>
-    </section>
-    <section class="notes">
-      云端静态页面可直接预览界面。真实语音、记忆和模型服务请连接本地电脑或随身小盒子的 `8766` 服务。
-    </section>
-  </main>
+  <script>
+    const target = new URL('./desktop-wallpaper/', window.location.href);
+    target.search = window.location.search || '?dialog=0&voice=0';
+    window.location.replace(target.href);
+  </script>
 </body>
 </html>
