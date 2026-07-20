@@ -10,7 +10,19 @@
 <body>
   <script>
     const target = new URL('./desktop-wallpaper/', window.location.href);
-    target.search = window.location.search || '?dialog=1&voice=1&persona=female&skin=sakura&motion=lively&controls=1';
+    const search = new URLSearchParams(window.location.search);
+    const defaults = {
+      dialog: '1',
+      voice: '1',
+      persona: 'female',
+      skin: 'sakura',
+      motion: 'lively',
+      controls: '1'
+    };
+    Object.entries(defaults).forEach(([key, value]) => {
+      if (!search.has(key)) search.set(key, value);
+    });
+    target.search = search.toString();
     window.location.replace(target.href);
   </script>
 </body>
