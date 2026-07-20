@@ -73,7 +73,7 @@ const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
 
-const modelAssetVersion = 'v0.2.3-hd';
+const modelAssetVersion = 'v0.2.3-hd2';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
