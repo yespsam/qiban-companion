@@ -80,25 +80,15 @@ const modelAssets = {
   female: {
     model: modelUrl('./assets/models/xiao-qi.glb'),
     animations: {
-      idle: modelUrl('./assets/models/xiao-qi-idle.glb'),
-      wave: modelUrl('./assets/models/xiao-qi-wave.glb'),
-      nod: modelUrl('./assets/models/xiao-qi-nod.glb'),
       walk: modelUrl('./assets/models/xiao-qi-walk.glb'),
-      run: modelUrl('./assets/models/xiao-qi-run.glb'),
-      heart: modelUrl('./assets/models/xiao-qi-heart.glb'),
-      voice: modelUrl('./assets/models/xiao-qi-voice.glb')
+      run: modelUrl('./assets/models/xiao-qi-run.glb')
     }
   },
   male: {
     model: modelUrl('./assets/models/qi-an.glb'),
     animations: {
-      idle: modelUrl('./assets/models/qi-an-idle.glb'),
-      wave: modelUrl('./assets/models/qi-an-wave.glb'),
-      nod: modelUrl('./assets/models/qi-an-nod.glb'),
       walk: modelUrl('./assets/models/qi-an-walk.glb'),
-      run: modelUrl('./assets/models/qi-an-run.glb'),
-      heart: modelUrl('./assets/models/qi-an-heart.glb'),
-      voice: modelUrl('./assets/models/qi-an-voice.glb')
+      run: modelUrl('./assets/models/qi-an-run.glb')
     }
   }
 };
