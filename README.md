@@ -2,7 +2,7 @@
 
 栖伴是一个本地优先的 AI 伴侣原型，打开后直接进入拟人化二次元 3D 角色画面，可部署到电脑、手机浏览器或随身小盒子上的 FastAPI 后端。
 
-当前 `v0.2.2` 版本包含 Meshy 生成的男女 3D 角色模型、高清材质渲染、整身骨骼动作（挥手、点头、回应、说话、散步、奔跑）、真实语音声线选择和纯人物入口。
+当前 `v0.2.3` 版本包含重新生成的高清男女 3D 角色模型、沉浸式纯人物入口、稳定骨骼动作（挥手、点头、回应、说话、散步、奔跑）、真实语音声线选择和移动/桌面自适应构图。
 
 ## 一键打开
 
@@ -55,18 +55,18 @@ http://127.0.0.1:8765/?api=http://127.0.0.1:8766
 维护者生成解压版 ZIP：
 
 ```bash
-./scripts/package-release.sh v0.2.2
+./scripts/package-release.sh v0.2.3
 ```
 
 产物会生成到：
 
 ```text
-dist/qiban-companion-portable-v0.2.2.zip
+dist/qiban-companion-portable-v0.2.3.zip
 ```
 
 压缩包只包含可发布源码、启动脚本、静态资源和说明文档，不包含 `.git`、虚拟环境、运行日志、历史对话数据、测试截图或旧备份。
 
-别人使用时从 GitHub Releases 下载 `qiban-companion-portable-v0.2.2.zip`，解压后按系统双击启动即可。
+别人使用时从 GitHub Releases 下载 `qiban-companion-portable-v0.2.3.zip`，解压后按系统双击启动即可。
 
 ## 云端静态入口
 

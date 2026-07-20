@@ -5,6 +5,8 @@ const canvas = document.getElementById('scene');
 const nameEl = document.getElementById('name');
 const lineEl = document.getElementById('line');
 const serverStateEl = document.getElementById('server-state');
+const dockEl = document.querySelector('.dock');
+const menuButton = document.getElementById('menu-btn');
 const dialogButton = document.getElementById('dialog-btn');
 const voiceButton = document.getElementById('voice-btn');
 const voicePanel = document.getElementById('voice-panel');
@@ -71,32 +73,38 @@ const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
 
+const modelAssetVersion = 'v0.2.3-hd';
+const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
+
 const modelAssets = {
   female: {
-    model: './assets/models/xiao-qi.glb',
+    model: modelUrl('./assets/models/xiao-qi.glb'),
     animations: {
-      wave: './assets/models/xiao-qi-wave.glb',
-      nod: './assets/models/xiao-qi-nod.glb',
-      walk: './assets/models/xiao-qi-walk.glb',
-      run: './assets/models/xiao-qi-run.glb',
-      heart: './assets/models/xiao-qi-heart.glb',
-      voice: './assets/models/xiao-qi-voice.glb'
+      idle: modelUrl('./assets/models/xiao-qi-idle.glb'),
+      wave: modelUrl('./assets/models/xiao-qi-wave.glb'),
+      nod: modelUrl('./assets/models/xiao-qi-nod.glb'),
+      walk: modelUrl('./assets/models/xiao-qi-walk.glb'),
+      run: modelUrl('./assets/models/xiao-qi-run.glb'),
+      heart: modelUrl('./assets/models/xiao-qi-heart.glb'),
+      voice: modelUrl('./assets/models/xiao-qi-voice.glb')
     }
   },
   male: {
-    model: './assets/models/qi-an.glb',
+    model: modelUrl('./assets/models/qi-an.glb'),
     animations: {
-      wave: './assets/models/qi-an-wave.glb',
-      nod: './assets/models/qi-an-nod.glb',
-      walk: './assets/models/qi-an-walk.glb',
-      run: './assets/models/qi-an-run.glb',
-      heart: './assets/models/qi-an-heart.glb',
-      voice: './assets/models/qi-an-voice.glb'
+      idle: modelUrl('./assets/models/qi-an-idle.glb'),
+      wave: modelUrl('./assets/models/qi-an-wave.glb'),
+      nod: modelUrl('./assets/models/qi-an-nod.glb'),
+      walk: modelUrl('./assets/models/qi-an-walk.glb'),
+      run: modelUrl('./assets/models/qi-an-run.glb'),
+      heart: modelUrl('./assets/models/qi-an-heart.glb'),
+      voice: modelUrl('./assets/models/qi-an-voice.glb')
     }
   }
 };
 
-const loopingModelActions = new Set(['walk', 'run', 'voice']);
+const runtimeModelActions = new Set(['walk', 'run']);
+const loopingModelActions = new Set(['walk', 'run']);
 const gltfLoader = new GLTFLoader();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -137,10 +145,10 @@ const personas = {
     cheek: 0xff99ad,
     scale: 1,
     idlePoseTime: 0.18,
-    modelScaleDesktop: 1.14,
+    modelScaleDesktop: 0.78,
     modelScaleMobile: 0.9,
-    modelYDesktop: -0.12,
-    modelYMobile: -0.08,
+    modelYDesktop: -0.14,
+    modelYMobile: -0.12,
     shoulder: 0.88,
     hip: 0.82,
     stance: 0.18,
@@ -173,10 +181,10 @@ const personas = {
     cheek: 0xf0a996,
     scale: 1.04,
     idlePoseTime: 0.9,
-    modelScaleDesktop: 0.96,
-    modelScaleMobile: 0.94,
-    modelYDesktop: -0.42,
-    modelYMobile: -0.08,
+    modelScaleDesktop: 0.74,
+    modelScaleMobile: 0.82,
+    modelYDesktop: -0.26,
+    modelYMobile: -0.22,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -216,13 +224,18 @@ const state = {
   dialogEnabled: dialogEnabledInPage,
   activeVoiceArchetype: '',
   voiceResources: [],
+  dockOpen: false,
   voicePanelOpen: false,
   interactionCount: 0,
+  voiceLoading: false,
   speaking: false,
   awaitingPlayback: false,
   voiceRequestId: 0,
   currentAudio: null,
-  currentAudioUrl: null
+  currentAudioUrl: null,
+  prefetchedVoiceBlob: null,
+  prefetchedVoiceKey: '',
+  voicePrefetchPromise: null
 };
 state.activeVoiceArchetype = storedVoiceArchetype(state.activePersona);
 state.voiceResources = fallbackVoiceResources[state.activePersona];
@@ -767,6 +780,7 @@ function setVisible(parts, visible) {
 function setPersona(id) {
   state.activePersona = id;
   storeValue('qiban-persona', id);
+  clearVoicePrefetch();
   state.activeVoiceArchetype = storedVoiceArchetype(id);
   state.voiceResources = fallbackVoiceResources[id];
   state.voicePanelOpen = false;
@@ -804,7 +818,9 @@ function setPersona(id) {
 }
 
 function setAction(action) {
-  ensureModelAnimations(state.activePersona, [action]);
+  if (runtimeModelActions.has(action)) {
+    ensureModelAnimations(state.activePersona, [action]);
+  }
   state.action = action;
   state.actionStarted = performance.now() * 0.001;
   actionButtons.forEach((button) => {
@@ -894,15 +910,20 @@ function activateLoadedModel(id) {
     return;
   }
 
+  modelState.active = entry;
+  if (!entry.actions.walk && entry.animationRequests.walk !== 'failed') {
+    modelLayer.visible = false;
+    avatar.visible = false;
+    ensureModelAnimations(id, ['walk']);
+    return;
+  }
+
   if (entry.root.parent !== modelLayer) {
     modelLayer.clear();
     modelLayer.add(entry.root);
   }
-  modelState.active = entry;
   modelLayer.visible = true;
   avatar.visible = false;
-  ensureModelAnimations(id, ['walk']);
-  window.setTimeout(() => ensureModelAnimations(id), 5000);
 }
 
 function loadModel(id) {
@@ -944,11 +965,6 @@ function loadModel(id) {
 
 function preloadModels() {
   loadModel(state.activePersona);
-  window.setTimeout(() => {
-    Object.keys(modelAssets).forEach((id) => {
-      if (id !== state.activePersona) loadModel(id);
-    });
-  }, 4200);
 }
 
 function ensureModelAnimations(id, names = null) {
@@ -957,6 +973,7 @@ function ensureModelAnimations(id, names = null) {
   if (!entry || !asset) return;
   const requested = names ? new Set(names) : null;
   Object.entries(asset.animations || {}).forEach(([name, url]) => {
+    if (!runtimeModelActions.has(name)) return;
     if (requested && !requested.has(name)) return;
     if (entry.actions[name] || entry.animationRequests[name]) return;
     loadModelAnimation(entry, name, url);
@@ -970,7 +987,7 @@ function loadModelAnimation(entry, name, url) {
       if (!response.ok) throw new Error('animation not found');
       gltfLoader.load(url, (gltf) => {
         const clip = (gltf.animations || []).find((item) => item.duration > 0) || gltf.animations[0];
-        if (!clip) {
+        if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) {
           entry.animationRequests[name] = 'failed';
           return;
         }
@@ -981,6 +998,10 @@ function loadModelAnimation(entry, name, url) {
         action.clampWhenFinished = !shouldLoop;
         entry.actions[name] = action;
         entry.animationRequests[name] = 'loaded';
+        if (modelState.active === entry && name === 'walk') {
+          activateLoadedModel(state.activePersona);
+          resize();
+        }
       });
     })
     .catch(() => {
@@ -1091,30 +1112,23 @@ function modelFrameScaleMultiplier() {
   const mobile = window.innerWidth < 720;
   if (mobile) {
     return {
-      wave: 0.94,
-      nod: 0.96,
-      heart: 0.96,
-      voice: 0.9
+      wave: 0.98,
+      nod: 1,
+      heart: 0.98,
+      voice: 0.98
     }[state.action] || 1;
   }
   const actionScale = {
-    wave: 0.94,
-    nod: 0.9,
-    heart: 0.9,
-    voice: 0.94
+    wave: 0.98,
+    nod: 1,
+    heart: 0.98,
+    voice: 0.98
   }[state.action] || 1;
   return actionScale;
 }
 
 function modelFrameXOffset() {
-  const mobile = window.innerWidth < 720;
-  if (!mobile) return 0;
-  return {
-    wave: -0.76,
-    nod: -0.14,
-    heart: -0.2,
-    voice: -0.72
-  }[state.action] || 0;
+  return 0;
 }
 
 function applyModelFrameScale(multiplier, yOffset = 0) {
@@ -1145,7 +1159,7 @@ function updateModelPose(t, delta = 0) {
     return;
   }
 
-  if (playModelAnimation(entry, state.action)) {
+  if (runtimeModelActions.has(state.action) && playModelAnimation(entry, state.action)) {
     entry.mixer.update(delta);
     const locomotion = state.action === 'walk' || state.action === 'run';
     if (locomotion) {
@@ -1237,13 +1251,14 @@ function updateModelPose(t, delta = 0) {
   }
 
   if (state.action === 'voice') {
-    const duration = state.speaking ? 4.2 : 2.1;
+    const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
+    const duration = voiceActive ? 4.2 : 2.1;
     const p = Math.min(elapsed / duration, 1);
     const envelope = Math.sin(p * Math.PI);
     addBoneRotation(entry, 'Head', Math.sin(t * 9) * 0.018 * (state.speaking ? 1 : envelope), 0, 0);
     addBoneRotation(entry, 'RightArm', -0.16 * envelope, -0.06 * envelope, -0.22 * envelope);
     addBoneRotation(entry, 'RightForeArm', -0.1 * envelope, 0, -0.18 * envelope);
-    if (!state.speaking) finishActionIfNeeded(elapsed, duration);
+    if (!voiceActive) finishActionIfNeeded(elapsed, duration);
   }
 }
 
@@ -1371,7 +1386,8 @@ function updateActionPose(t) {
   }
 
   if (state.action === 'voice') {
-    const duration = state.speaking ? 4.2 : 2.1;
+    const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
+    const duration = voiceActive ? 4.2 : 2.1;
     const p = Math.min(elapsed / duration, 1);
     const envelope = Math.sin(p * Math.PI);
     rightArm.rotation.z = -0.82 * envelope - 0.32 * (1 - envelope);
@@ -1379,7 +1395,7 @@ function updateActionPose(t) {
     rightForearm.rotation.z = -0.45 * envelope;
     leftArm.rotation.z = 0.22 + envelope * 0.14;
     rig.chestGlow.scale.x = 1 + Math.sin(t * 10) * 0.08 * (state.speaking ? 1 : envelope);
-    if (!state.speaking) finishActionIfNeeded(elapsed, duration);
+    if (!voiceActive) finishActionIfNeeded(elapsed, duration);
   }
 }
 
@@ -1390,8 +1406,8 @@ function resize() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
-  camera.position.z = mobile ? 8.1 : 6.9;
-  camera.position.y = mobile ? 0.34 : 0.18;
+  camera.position.z = mobile ? 7.55 : 6.85;
+  camera.position.y = mobile ? 0.3 : 0.22;
   avatar.position.set(0, mobile ? 0.34 : 0.3, 0);
   avatar.scale.setScalar(persona.scale * (mobile ? 0.82 : 1.02));
   modelLayer.position.set(0, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
@@ -1438,6 +1454,9 @@ function updatePointer(event) {
 function stopCurrentAudio() {
   if (state.currentAudio) {
     try { state.currentAudio.pause(); } catch (error) {}
+    if (state.currentAudio.parentNode) {
+      state.currentAudio.parentNode.removeChild(state.currentAudio);
+    }
     state.currentAudio = null;
   }
   if (state.currentAudioUrl) {
@@ -1447,13 +1466,18 @@ function stopCurrentAudio() {
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
   }
+  state.voiceLoading = false;
   state.speaking = false;
   state.awaitingPlayback = false;
 }
 
 function finishSpeaking(status = '对话开') {
+  if (state.currentAudio && state.currentAudio.parentNode) {
+    state.currentAudio.parentNode.removeChild(state.currentAudio);
+  }
   state.currentAudio = null;
   state.currentAudioUrl = null;
+  state.voiceLoading = false;
   state.speaking = false;
   state.awaitingPlayback = false;
   state.voiceReady = status !== '语音未接';
@@ -1461,11 +1485,16 @@ function finishSpeaking(status = '对话开') {
   serverStateEl.textContent = status;
   serverStateEl.title = '';
   updateDialogControls();
+  prefetchVoice();
 }
 
 function markVoiceUnavailable(message = '语音未接', detail = '') {
+  if (state.currentAudio && state.currentAudio.parentNode) {
+    state.currentAudio.parentNode.removeChild(state.currentAudio);
+  }
   state.currentAudio = null;
   state.currentAudioUrl = null;
+  state.voiceLoading = false;
   state.speaking = false;
   state.awaitingPlayback = false;
   state.voiceReady = false;
@@ -1475,15 +1504,29 @@ function markVoiceUnavailable(message = '语音未接', detail = '') {
   updateDialogControls();
 }
 
+function setDockOpen(open) {
+  state.dockOpen = open;
+  if (dockEl) dockEl.classList.toggle('open', open);
+  if (menuButton) {
+    menuButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+    menuButton.setAttribute('aria-label', open ? '关闭控制' : '打开控制');
+  }
+  if (!open && state.voicePanelOpen) {
+    setVoicePanelOpen(false);
+  }
+}
+
 function updateDialogControls() {
   if (!dialogButton) return;
   const needsRealVoice = state.dialogEnabled && !browserVoiceFallbackEnabled && (!voiceApiEnabledInPage || !!state.voiceError);
   const label = !state.dialogEnabled
     ? '对话关'
-    : state.speaking
+    : state.voiceLoading
+      ? '生成中'
+      : state.speaking
       ? '说话中'
       : state.awaitingPlayback
-        ? '待播放'
+        ? '播放'
       : needsRealVoice
         ? '语音未接'
         : '对话开';
@@ -1529,6 +1572,7 @@ function renderVoicePanel() {
 }
 
 function setVoicePanelOpen(open) {
+  if (open && !state.dockOpen) setDockOpen(true);
   state.voicePanelOpen = open;
   updateVoiceControls();
 }
@@ -1550,6 +1594,7 @@ function loadVoiceResources() {
         storeValue(voiceChoiceKey(state.activePersona), '');
       }
       updateVoiceControls();
+      prefetchVoice();
     })
     .catch(() => {
       state.voiceResources = fallbackVoiceResources[state.activePersona];
@@ -1558,6 +1603,7 @@ function loadVoiceResources() {
 }
 
 function selectVoiceResource(archetype) {
+  clearVoicePrefetch();
   state.activeVoiceArchetype = normalizeVoiceArchetype(archetype);
   storeValue(voiceChoiceKey(state.activePersona), state.activeVoiceArchetype);
   setVoicePanelOpen(false);
@@ -1573,7 +1619,121 @@ function selectVoiceResource(archetype) {
   }
   if (state.dialogEnabled) {
     setAction('voice');
+  } else {
+    prefetchVoice();
   }
+}
+
+function voiceMood() {
+  return state.activePersona === 'female' ? 'happy' : 'calm';
+}
+
+function voicePayloadFor(persona) {
+  return {
+    text: persona.voiceLine,
+    persona: persona.id,
+    relationship: 'lover',
+    mood: voiceMood(),
+    archetype: state.activeVoiceArchetype
+  };
+}
+
+function voiceCacheKey(payload) {
+  return [
+    payload.text,
+    payload.persona,
+    payload.relationship,
+    payload.mood,
+    payload.archetype || ''
+  ].join('|');
+}
+
+function clearVoicePrefetch() {
+  state.prefetchedVoiceBlob = null;
+  state.prefetchedVoiceKey = '';
+  state.voicePrefetchPromise = null;
+}
+
+function fetchVoiceBlob(payload) {
+  return fetch(`${voiceApiBase}/api/voice/speak`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then((response) => {
+    const type = response.headers.get('content-type') || '';
+    if (!response.ok || !type.includes('audio')) {
+      throw new Error(`voice response ${response.status}`);
+    }
+    return response.blob();
+  });
+}
+
+function prefetchVoice() {
+  if (!state.dialogEnabled || !voiceApiEnabledInPage || state.voiceLoading || state.speaking || state.awaitingPlayback) {
+    return;
+  }
+  const persona = personas[state.activePersona];
+  const payload = voicePayloadFor(persona);
+  const key = voiceCacheKey(payload);
+  if (state.prefetchedVoiceBlob && state.prefetchedVoiceKey === key) return;
+  if (state.voicePrefetchPromise) return;
+  state.voicePrefetchPromise = fetchVoiceBlob(payload)
+    .then((blob) => {
+      state.prefetchedVoiceBlob = blob;
+      state.prefetchedVoiceKey = key;
+    })
+    .catch(() => {})
+    .finally(() => {
+      state.voicePrefetchPromise = null;
+    });
+}
+
+function playVoiceBlob(blob, requestId) {
+  if (!blob || requestId !== state.voiceRequestId) return;
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.preload = 'auto';
+  audio.playsInline = true;
+  audio.setAttribute('playsinline', '');
+  audio.className = 'voice-native-audio';
+  document.body.appendChild(audio);
+  state.currentAudio = audio;
+  state.currentAudioUrl = url;
+  audio.onended = () => {
+    URL.revokeObjectURL(url);
+    if (state.currentAudioUrl === url) state.currentAudioUrl = null;
+    finishSpeaking('本地语音');
+  };
+  audio.onerror = () => {
+    URL.revokeObjectURL(url);
+    if (state.currentAudioUrl === url) state.currentAudioUrl = null;
+    markVoiceUnavailable('播放失败', '真实音频已返回，但浏览器播放器无法播放。');
+  };
+  state.voiceLoading = false;
+  state.speaking = true;
+  state.awaitingPlayback = false;
+  serverStateEl.textContent = '正在说话';
+  serverStateEl.title = '';
+  updateDialogControls();
+  audio.play().then(() => {
+    state.voiceReady = true;
+    state.voiceError = '';
+    state.voiceLoading = false;
+    state.speaking = true;
+    state.awaitingPlayback = false;
+    serverStateEl.textContent = '正在说话';
+    serverStateEl.title = '';
+    updateDialogControls();
+  }).catch(() => {
+    state.voiceLoading = false;
+    state.speaking = false;
+    state.awaitingPlayback = true;
+    state.voiceReady = true;
+    state.voiceError = '';
+    serverStateEl.textContent = '播放';
+    serverStateEl.title = '真实语音已生成，请点“播放”或人物播放。';
+    updateDialogControls();
+  });
 }
 
 function speakWithBrowserVoice(text) {
@@ -1602,6 +1762,7 @@ function requestVoice() {
   const persona = personas[state.activePersona];
   const requestId = state.voiceRequestId + 1;
   state.voiceRequestId = requestId;
+  lineEl.textContent = persona.voiceLine;
   if (!state.dialogEnabled) {
     stopCurrentAudio();
     serverStateEl.textContent = '对话关';
@@ -1619,55 +1780,24 @@ function requestVoice() {
     return;
   }
   stopCurrentAudio();
+  const payload = voicePayloadFor(persona);
+  const key = voiceCacheKey(payload);
+  const cachedBlob = state.prefetchedVoiceKey === key ? state.prefetchedVoiceBlob : null;
+  if (cachedBlob) {
+    clearVoicePrefetch();
+    playVoiceBlob(cachedBlob, requestId);
+    return;
+  }
   state.voiceError = '';
-  serverStateEl.textContent = '本地语音';
-  state.speaking = true;
+  serverStateEl.textContent = '生成中';
+  serverStateEl.title = '正在生成真实语音。';
+  state.voiceLoading = true;
+  state.speaking = false;
   state.awaitingPlayback = false;
   updateDialogControls();
-  fetch(`${voiceApiBase}/api/voice/speak`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: persona.voiceLine,
-      persona: persona.id,
-      relationship: 'lover',
-      mood: state.activePersona === 'female' ? 'happy' : 'calm',
-      archetype: state.activeVoiceArchetype
-    })
-  }).then((response) => {
+  fetchVoiceBlob(payload).then((blob) => {
     if (requestId !== state.voiceRequestId) return null;
-    const type = response.headers.get('content-type') || '';
-    if (!response.ok || !type.includes('audio')) {
-      throw new Error(`voice response ${response.status}`);
-    }
-    return response.blob();
-  }).then((blob) => {
-    if (!blob || requestId !== state.voiceRequestId) return;
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    state.currentAudio = audio;
-    state.currentAudioUrl = url;
-    audio.onended = () => {
-      URL.revokeObjectURL(url);
-      if (state.currentAudioUrl === url) state.currentAudioUrl = null;
-      finishSpeaking('本地语音');
-    };
-    audio.onerror = () => {
-      URL.revokeObjectURL(url);
-      if (state.currentAudioUrl === url) state.currentAudioUrl = null;
-      markVoiceUnavailable('播放失败', '真实音频已返回，但浏览器播放器无法播放。');
-    };
-    serverStateEl.textContent = '正在说话';
-    updateDialogControls();
-    audio.play().catch(() => {
-      state.speaking = false;
-      state.awaitingPlayback = true;
-      state.voiceReady = true;
-      state.voiceError = '';
-      serverStateEl.textContent = '待播放';
-      serverStateEl.title = '真实语音已生成，浏览器需要再次点击后播放。';
-      updateDialogControls();
-    });
+    playVoiceBlob(blob, requestId);
   }).catch(() => {
     if (requestId !== state.voiceRequestId) return;
     stopCurrentAudio();
@@ -1686,11 +1816,20 @@ function playQueuedAudio() {
   serverStateEl.textContent = '正在说话';
   serverStateEl.title = '';
   updateDialogControls();
-  state.currentAudio.play().catch(() => {
+  state.currentAudio.play().then(() => {
+    state.voiceReady = true;
+    state.voiceError = '';
+    state.voiceLoading = false;
+    state.speaking = true;
+    state.awaitingPlayback = false;
+    serverStateEl.textContent = '正在说话';
+    serverStateEl.title = '';
+    updateDialogControls();
+  }).catch(() => {
     state.speaking = false;
     state.awaitingPlayback = true;
-    serverStateEl.textContent = '待播放';
-    serverStateEl.title = '真实语音已生成，浏览器需要再次点击后播放。';
+    serverStateEl.textContent = '播放';
+    serverStateEl.title = '真实语音已生成，请点“播放”或人物播放。';
     updateDialogControls();
   });
   return true;
@@ -1719,13 +1858,17 @@ function checkVoiceStatus() {
       if (!status) return;
       state.voiceReady = !!status.enabled;
       state.voiceError = status.enabled ? '' : '语音未接';
-      serverStateEl.textContent = status.enabled ? '本地语音' : '语音未接';
-      serverStateEl.title = '';
-      if (status.cast && status.cast.voice) {
+      const voiceBusy = state.voiceLoading || state.speaking || state.awaitingPlayback;
+      if (!voiceBusy) {
+        serverStateEl.textContent = status.enabled ? '本地语音' : '语音未接';
+        serverStateEl.title = '';
+      }
+      if (!voiceBusy && status.cast && status.cast.voice) {
         serverStateEl.title = status.cast.voice;
       }
       updateDialogControls();
       loadVoiceResources();
+      prefetchVoice();
     })
     .catch(() => {
       if (browserVoiceFallbackEnabled) {
@@ -1787,6 +1930,7 @@ canvas.addEventListener('pointercancel', () => {
 });
 
 canvas.addEventListener('click', () => {
+  if (state.dockOpen) setDockOpen(false);
   if (playQueuedAudio()) return;
   interactWithCompanion();
 });
@@ -1804,6 +1948,15 @@ window.addEventListener('keydown', (event) => {
   }
 });
 
+if (menuButton) {
+  menuButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setDockOpen(!state.dockOpen);
+  });
+}
+if (dockEl) {
+  dockEl.addEventListener('click', (event) => event.stopPropagation());
+}
 personaButtons.female.addEventListener('click', () => setPersona('female'));
 personaButtons.male.addEventListener('click', () => setPersona('male'));
 if (dialogButton) {
@@ -1823,6 +1976,7 @@ if (voicePanel) {
 }
 document.addEventListener('click', () => {
   if (state.voicePanelOpen) setVoicePanelOpen(false);
+  if (state.dockOpen) setDockOpen(false);
 });
 actionButtons.forEach((button) => {
   button.addEventListener('click', () => setAction(button.dataset.action));
@@ -1833,6 +1987,7 @@ buildCharacter();
 preloadModels();
 setPersona(state.activePersona);
 setAction('idle');
+setDockOpen(false);
 checkVoiceStatus();
 resize();
 requestAnimationFrame(animate);

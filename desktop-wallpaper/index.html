@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <title>栖伴 · 3D 桌面壁纸</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2307c160'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' fill='white'%3E%E6%A0%96%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css?v=v0.2.2-voice-select">
+  <link rel="stylesheet" href="./style.css?v=v0.2.3-pm-qa">
 </head>
 <body>
   <main class="wallpaper" aria-label="栖伴 3D 桌面壁纸">
@@ -17,6 +17,12 @@
       <p id="line">我在桌面旁边，等你随时叫我。</p>
     </section>
     <section class="dock" aria-label="桌面伴侣控制">
+      <button class="menu-toggle" id="menu-btn" type="button" aria-label="打开控制" aria-expanded="false">
+        <span class="menu-line"></span>
+        <span class="menu-line"></span>
+        <span class="menu-line"></span>
+      </button>
+      <div class="dock-panel" id="dock-panel">
       <div class="dock-group primary-controls" aria-label="角色和对话">
         <button class="dock-btn active" id="female-btn" type="button">小栖</button>
         <button class="dock-btn" id="male-btn" type="button">栖安</button>
@@ -34,9 +40,10 @@
         <button class="dock-btn" type="button" data-action="voice">声音</button>
       </div>
       <span id="server-state" class="server-state">local standby</span>
+      </div>
     </section>
     <section class="voice-panel" id="voice-panel" aria-label="声线选择" hidden></section>
   </main>
-  <script type="module" src="./app.js?v=v0.2.2-voice-select"></script>
+  <script type="module" src="./app.js?v=v0.2.3-pm-qa"></script>
 </body>
 </html>

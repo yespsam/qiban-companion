@@ -53,6 +53,16 @@ body {
   cursor: pointer;
 }
 
+.voice-native-audio {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .presence {
   position: absolute;
   left: clamp(22px, 5vw, 78px);
@@ -88,19 +98,105 @@ h1 {
 
 .dock {
   position: absolute;
-  left: 50%;
+  right: max(18px, env(safe-area-inset-right));
   bottom: max(22px, env(safe-area-inset-bottom));
   z-index: 3;
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: calc(100vw - 24px);
+  max-width: calc(100vw - 36px);
+  pointer-events: none;
+}
+
+.menu-toggle,
+.dock-panel,
+.voice-panel {
+  pointer-events: auto;
+}
+
+.menu-toggle {
+  position: relative;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(246, 240, 231, 0.2);
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 12, 10, 0.2);
+  color: var(--ink);
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  opacity: 0.36;
+  transition: opacity 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.menu-toggle:hover,
+.dock.open .menu-toggle {
+  opacity: 0.92;
+  background: rgba(8, 12, 10, 0.52);
+}
+
+.menu-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.menu-line {
+  position: absolute;
+  left: 11px;
+  width: 16px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.menu-line:nth-child(1) {
+  transform: translateY(-6px);
+}
+
+.menu-line:nth-child(3) {
+  transform: translateY(6px);
+}
+
+.dock.open .menu-line:nth-child(1) {
+  transform: rotate(45deg);
+}
+
+.dock.open .menu-line:nth-child(2) {
+  opacity: 0;
+}
+
+.dock.open .menu-line:nth-child(3) {
+  transform: rotate(-45deg);
+}
+
+.dock-panel {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 92px);
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(8, 12, 10, 0.48);
+  background: rgba(8, 12, 10, 0.5);
   backdrop-filter: blur(14px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.dock-panel::-webkit-scrollbar {
+  display: none;
+}
+
+.dock.open {
+  left: 50%;
+  right: auto;
   transform: translateX(-50%);
+}
+
+.dock.open .dock-panel {
+  display: flex;
 }
 
 .dock-group {
@@ -154,7 +250,7 @@ h1 {
 
 .voice-panel {
   position: absolute;
-  left: 50%;
+  right: max(18px, env(safe-area-inset-right));
   bottom: calc(max(22px, env(safe-area-inset-bottom)) + 54px);
   z-index: 4;
   display: grid;
@@ -166,7 +262,6 @@ h1 {
   border-radius: 10px;
   background: rgba(8, 12, 10, 0.72);
   backdrop-filter: blur(16px);
-  transform: translateX(-50%);
 }
 
 .voice-panel[hidden] {
@@ -233,15 +328,12 @@ h1 {
     max-width: calc(100vw - 18px);
     display: flex;
     justify-content: center;
-    overflow: hidden;
-    border-radius: 999px;
     gap: 4px;
-    padding: 6px;
-    scrollbar-width: none;
+    right: max(12px, env(safe-area-inset-right));
   }
 
-  .dock::-webkit-scrollbar {
-    display: none;
+  .dock.open {
+    right: auto;
   }
 
   .dock-btn {
@@ -257,6 +349,17 @@ h1 {
     gap: 4px;
   }
 
+  .dock-panel {
+    max-width: calc(100vw - 68px);
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .menu-toggle {
+    width: 36px;
+    height: 36px;
+  }
+
   .actions {
     display: none;
   }
@@ -269,6 +372,7 @@ h1 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: min(286px, calc(100vw - 18px));
     bottom: calc(max(22px, env(safe-area-inset-bottom)) + 50px);
+    right: max(12px, env(safe-area-inset-right));
   }
 
   .voice-option {
