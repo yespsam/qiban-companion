@@ -1,0 +1,10 @@
+dist/
+meshy_output/
+ai-companion/project/.venv/
+ai-companion/project/data/
+ai-companion/project/logs/
+.env
+.env.*
+__pycache__/
+*.pyc
+.DS_Store
