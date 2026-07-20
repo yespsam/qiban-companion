@@ -33,6 +33,7 @@ def workdir(tmp_path, monkeypatch):
     cfg_dir = tmp_path / "config"
     shutil.copytree(REPO_ROOT / "config" / "personas", cfg_dir / "personas")
     shutil.copytree(REPO_ROOT / "config" / "relationships", cfg_dir / "relationships")
+    shutil.copy(REPO_ROOT / "config" / "voices.yaml", cfg_dir / "voices.yaml")
     (tmp_path / "data").mkdir()
     monkeypatch.chdir(tmp_path)
     return tmp_path
@@ -300,6 +301,42 @@ def test_voice_speak_accepts_mobile_cast_overrides(workdir, monkeypatch):
         "archetype": "uncle",
         "gender": "male",
     }
+
+
+def test_voice_resources_and_selection_endpoint(workdir):
+    from core.config import Settings
+
+    settings = Settings(
+        tier="lite",
+        llm_backend="mock",
+        model_id="hermes-lite",
+        active_persona="female_companion",
+        active_relationship="lover",
+        voice_enabled=True,
+        data_dir=str(workdir / "data"),
+    )
+    test_client = TestClient(create_app(settings))
+
+    resp = test_client.get("/api/voice/voices?persona=female")
+    assert resp.status_code == 200
+    body = resp.json()
+    ids = [item["id"] for item in body["resources"]]
+    assert "default" in ids and "loli" in ids and "yujie" in ids
+    assert body["persona"]["id"] == "female_companion"
+
+    resp = test_client.post(
+        "/api/voice/select",
+        json={"persona": "female", "archetype": "yujie"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["selected"]["name"] == "御姐音"
+    assert test_client.get("/api/settings").json()["active_archetype"] == "yujie"
+
+    bad = test_client.post(
+        "/api/voice/select",
+        json={"persona": "female", "archetype": "uncle"},
+    )
+    assert bad.status_code == 400
 
 
 # ---------------------------------------------------------------------- 设置

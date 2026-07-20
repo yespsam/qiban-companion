@@ -7,7 +7,8 @@ import sys
 
 import pytest
 
-from voice.casting import clear_cache, prosody_kwargs, resolve_cast
+from voice.casting import (clear_cache, list_voice_resources, prosody_kwargs,
+                           resolve_cast)
 from voice.tts import EdgeTTSEngine
 
 VOICES_YAML = """\
@@ -157,6 +158,20 @@ def test_unknown_archetype_ignored(voices_file):
                         voices_path=voices_file)
     assert cast["voice"] == "zh-CN-XiaoyiNeural"
     assert "archetype" not in cast
+
+
+def test_list_voice_resources_for_frontend(voices_file):
+    resources = list_voice_resources("female_companion", "lover", voices_path=voices_file)
+    assert [item["id"] for item in resources] == ["default", "loli", "yujie"]
+    assert resources[0]["name"] == "随身份"
+    assert resources[0]["archetype"] == ""
+    assert resources[1]["voice"] == "zh-CN-XiaoyiNeural"
+    assert resources[1]["gender"] == "female"
+
+
+def test_list_voice_resources_male_gender(voices_file):
+    resources = list_voice_resources("custom_bot", gender="male", voices_path=voices_file)
+    assert [item["id"] for item in resources] == ["default", "uncle"]
 
 
 # ---------- 4. 缓存 ----------

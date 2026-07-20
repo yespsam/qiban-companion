@@ -6,6 +6,8 @@ const nameEl = document.getElementById('name');
 const lineEl = document.getElementById('line');
 const serverStateEl = document.getElementById('server-state');
 const dialogButton = document.getElementById('dialog-btn');
+const voiceButton = document.getElementById('voice-btn');
+const voicePanel = document.getElementById('voice-panel');
 const personaButtons = {
   female: document.getElementById('female-btn'),
   male: document.getElementById('male-btn')
@@ -33,6 +35,23 @@ function enabledParam(name, fallback = false) {
   const raw = params.get(name);
   if (raw === null) return fallback;
   return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
+}
+
+function normalizeVoiceArchetype(value) {
+  const raw = (value || '').trim();
+  return raw === 'default' || raw === 'auto' ? '' : raw;
+}
+
+function voiceChoiceKey(personaId) {
+  return `qiban-voice-archetype-${personaId}`;
+}
+
+function hasStoredVoiceChoice(personaId) {
+  return params.has('archetype') || storedValue(voiceChoiceKey(personaId)) !== null;
+}
+
+function storedVoiceArchetype(personaId) {
+  return normalizeVoiceArchetype(params.get('archetype') || storedValue(voiceChoiceKey(personaId)));
 }
 
 function resolveApiBase() {
@@ -166,6 +185,21 @@ const personas = {
   }
 };
 
+const fallbackVoiceResources = {
+  female: [
+    { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-XiaoxiaoNeural', rate: '+0%', pitch: '+0Hz' },
+    { id: 'loli', archetype: 'loli', name: '萝莉音', voice: 'zh-CN-XiaoyiNeural', rate: '+12%', pitch: '+18Hz' },
+    { id: 'yujie', archetype: 'yujie', name: '御姐音', voice: 'zh-CN-XiaoxiaoNeural', rate: '-8%', pitch: '-8Hz' },
+    { id: 'funny', archetype: 'funny', name: '搞笑女', voice: 'zh-CN-XiaoyiNeural', rate: '+16%', pitch: '+10Hz' }
+  ],
+  male: [
+    { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-YunxiNeural', rate: '+0%', pitch: '+0Hz' },
+    { id: 'shonen', archetype: 'shonen', name: '少年音', voice: 'zh-CN-YunxiaNeural', rate: '+8%', pitch: '+12Hz' },
+    { id: 'uncle', archetype: 'uncle', name: '大叔音', voice: 'zh-CN-YunjianNeural', rate: '-10%', pitch: '-8Hz' },
+    { id: 'funny', archetype: 'funny', name: '搞笑男', voice: 'zh-CN-YunyangNeural', rate: '+16%', pitch: '+8Hz' }
+  ]
+};
+
 const state = {
   activePersona: (params.get('persona') || storedValue('qiban-persona')) === 'male' ? 'male' : 'female',
   action: 'idle',
@@ -180,10 +214,18 @@ const state = {
   voiceReady: false,
   voiceError: '',
   dialogEnabled: dialogEnabledInPage,
+  activeVoiceArchetype: '',
+  voiceResources: [],
+  voicePanelOpen: false,
   interactionCount: 0,
   speaking: false,
-  currentAudio: null
+  awaitingPlayback: false,
+  voiceRequestId: 0,
+  currentAudio: null,
+  currentAudioUrl: null
 };
+state.activeVoiceArchetype = storedVoiceArchetype(state.activePersona);
+state.voiceResources = fallbackVoiceResources[state.activePersona];
 
 const modelState = {
   loaded: {},
@@ -725,6 +767,9 @@ function setVisible(parts, visible) {
 function setPersona(id) {
   state.activePersona = id;
   storeValue('qiban-persona', id);
+  state.activeVoiceArchetype = storedVoiceArchetype(id);
+  state.voiceResources = fallbackVoiceResources[id];
+  state.voicePanelOpen = false;
   const persona = personas[id];
   mats.hair.color.setHex(persona.hair);
   mats.hairAlt.color.setHex(persona.hairAlt);
@@ -751,8 +796,10 @@ function setPersona(id) {
     button.classList.toggle('active', key === id);
   });
   updateDialogControls();
+  updateVoiceControls();
   loadModel(id);
   activateLoadedModel(id);
+  loadVoiceResources();
   resize();
 }
 
@@ -1393,24 +1440,34 @@ function stopCurrentAudio() {
     try { state.currentAudio.pause(); } catch (error) {}
     state.currentAudio = null;
   }
+  if (state.currentAudioUrl) {
+    URL.revokeObjectURL(state.currentAudioUrl);
+    state.currentAudioUrl = null;
+  }
   if ('speechSynthesis' in window) {
     window.speechSynthesis.cancel();
   }
   state.speaking = false;
+  state.awaitingPlayback = false;
 }
 
 function finishSpeaking(status = '对话开') {
   state.currentAudio = null;
+  state.currentAudioUrl = null;
   state.speaking = false;
+  state.awaitingPlayback = false;
   state.voiceReady = status !== '语音未接';
   state.voiceError = '';
   serverStateEl.textContent = status;
+  serverStateEl.title = '';
   updateDialogControls();
 }
 
 function markVoiceUnavailable(message = '语音未接', detail = '') {
   state.currentAudio = null;
+  state.currentAudioUrl = null;
   state.speaking = false;
+  state.awaitingPlayback = false;
   state.voiceReady = false;
   state.voiceError = message;
   serverStateEl.textContent = message;
@@ -1425,6 +1482,8 @@ function updateDialogControls() {
     ? '对话关'
     : state.speaking
       ? '说话中'
+      : state.awaitingPlayback
+        ? '待播放'
       : needsRealVoice
         ? '语音未接'
         : '对话开';
@@ -1432,6 +1491,89 @@ function updateDialogControls() {
   dialogButton.classList.toggle('warning', needsRealVoice);
   dialogButton.textContent = label;
   dialogButton.setAttribute('aria-pressed', state.dialogEnabled ? 'true' : 'false');
+}
+
+function selectedVoiceResource() {
+  const archetype = state.activeVoiceArchetype || '';
+  return state.voiceResources.find((item) => (item.archetype || '') === archetype)
+    || state.voiceResources[0]
+    || fallbackVoiceResources[state.activePersona][0];
+}
+
+function updateVoiceControls() {
+  if (!voiceButton) return;
+  const selected = selectedVoiceResource();
+  voiceButton.textContent = selected && selected.archetype ? selected.name : '声线';
+  voiceButton.classList.toggle('active', !!(selected && selected.archetype));
+  voiceButton.setAttribute('aria-expanded', state.voicePanelOpen ? 'true' : 'false');
+  voiceButton.title = selected && selected.voice ? `${selected.name} · ${selected.voice}` : '选择声线';
+  renderVoicePanel();
+}
+
+function renderVoicePanel() {
+  if (!voicePanel) return;
+  voicePanel.hidden = !state.voicePanelOpen;
+  if (!state.voicePanelOpen) return;
+  voicePanel.textContent = '';
+  state.voiceResources.forEach((item) => {
+    const option = document.createElement('button');
+    option.className = 'voice-option';
+    option.type = 'button';
+    option.dataset.voice = item.archetype || 'default';
+    option.textContent = item.name || item.id || '声线';
+    option.title = item.voice ? `${item.voice} ${item.rate || ''} ${item.pitch || ''}` : '';
+    option.classList.toggle('active', (item.archetype || '') === (state.activeVoiceArchetype || ''));
+    option.addEventListener('click', () => selectVoiceResource(item.archetype || ''));
+    voicePanel.appendChild(option);
+  });
+}
+
+function setVoicePanelOpen(open) {
+  state.voicePanelOpen = open;
+  updateVoiceControls();
+}
+
+function loadVoiceResources() {
+  state.voiceResources = fallbackVoiceResources[state.activePersona];
+  updateVoiceControls();
+  if (!voiceApiEnabledInPage) return;
+  fetch(`${voiceApiBase}/api/voice/voices?persona=${encodeURIComponent(state.activePersona)}`)
+    .then((response) => response.ok ? response.json() : null)
+    .then((body) => {
+      if (!body || !Array.isArray(body.resources) || body.resources.length === 0) return;
+      state.voiceResources = body.resources;
+      if (!hasStoredVoiceChoice(state.activePersona)) {
+        state.activeVoiceArchetype = normalizeVoiceArchetype(body.active_archetype);
+      }
+      if (!state.voiceResources.some((item) => (item.archetype || '') === (state.activeVoiceArchetype || ''))) {
+        state.activeVoiceArchetype = '';
+        storeValue(voiceChoiceKey(state.activePersona), '');
+      }
+      updateVoiceControls();
+    })
+    .catch(() => {
+      state.voiceResources = fallbackVoiceResources[state.activePersona];
+      updateVoiceControls();
+    });
+}
+
+function selectVoiceResource(archetype) {
+  state.activeVoiceArchetype = normalizeVoiceArchetype(archetype);
+  storeValue(voiceChoiceKey(state.activePersona), state.activeVoiceArchetype);
+  setVoicePanelOpen(false);
+  if (voiceApiEnabledInPage) {
+    fetch(`${voiceApiBase}/api/voice/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        persona: state.activePersona,
+        archetype: state.activeVoiceArchetype
+      })
+    }).catch(() => {});
+  }
+  if (state.dialogEnabled) {
+    setAction('voice');
+  }
 }
 
 function speakWithBrowserVoice(text) {
@@ -1458,6 +1600,8 @@ function speakWithBrowserVoice(text) {
 
 function requestVoice() {
   const persona = personas[state.activePersona];
+  const requestId = state.voiceRequestId + 1;
+  state.voiceRequestId = requestId;
   if (!state.dialogEnabled) {
     stopCurrentAudio();
     serverStateEl.textContent = '对话关';
@@ -1478,6 +1622,7 @@ function requestVoice() {
   state.voiceError = '';
   serverStateEl.textContent = '本地语音';
   state.speaking = true;
+  state.awaitingPlayback = false;
   updateDialogControls();
   fetch(`${voiceApiBase}/api/voice/speak`, {
     method: 'POST',
@@ -1486,30 +1631,45 @@ function requestVoice() {
       text: persona.voiceLine,
       persona: persona.id,
       relationship: 'lover',
-      mood: state.activePersona === 'female' ? 'happy' : 'calm'
+      mood: state.activePersona === 'female' ? 'happy' : 'calm',
+      archetype: state.activeVoiceArchetype
     })
   }).then((response) => {
+    if (requestId !== state.voiceRequestId) return null;
     const type = response.headers.get('content-type') || '';
     if (!response.ok || !type.includes('audio')) {
       throw new Error(`voice response ${response.status}`);
     }
     return response.blob();
   }).then((blob) => {
+    if (!blob || requestId !== state.voiceRequestId) return;
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     state.currentAudio = audio;
-    audio.onended = audio.onerror = () => {
+    state.currentAudioUrl = url;
+    audio.onended = () => {
       URL.revokeObjectURL(url);
+      if (state.currentAudioUrl === url) state.currentAudioUrl = null;
       finishSpeaking('本地语音');
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(url);
+      if (state.currentAudioUrl === url) state.currentAudioUrl = null;
+      markVoiceUnavailable('播放失败', '真实音频已返回，但浏览器播放器无法播放。');
     };
     serverStateEl.textContent = '正在说话';
     updateDialogControls();
     audio.play().catch(() => {
-      URL.revokeObjectURL(url);
-      stopCurrentAudio();
-      markVoiceUnavailable('语音未接', '真实语音已返回，但浏览器阻止播放；请点击人物重试。');
+      state.speaking = false;
+      state.awaitingPlayback = true;
+      state.voiceReady = true;
+      state.voiceError = '';
+      serverStateEl.textContent = '待播放';
+      serverStateEl.title = '真实语音已生成，浏览器需要再次点击后播放。';
+      updateDialogControls();
     });
   }).catch(() => {
+    if (requestId !== state.voiceRequestId) return;
     stopCurrentAudio();
     if (browserVoiceFallbackEnabled) {
       speakWithBrowserVoice(persona.voiceLine);
@@ -1517,6 +1677,23 @@ function requestVoice() {
     }
     markVoiceUnavailable('语音未接', `真实语音 API 未连接：${voiceApiBase}`);
   });
+}
+
+function playQueuedAudio() {
+  if (!state.awaitingPlayback || !state.currentAudio) return false;
+  state.awaitingPlayback = false;
+  state.speaking = true;
+  serverStateEl.textContent = '正在说话';
+  serverStateEl.title = '';
+  updateDialogControls();
+  state.currentAudio.play().catch(() => {
+    state.speaking = false;
+    state.awaitingPlayback = true;
+    serverStateEl.textContent = '待播放';
+    serverStateEl.title = '真实语音已生成，浏览器需要再次点击后播放。';
+    updateDialogControls();
+  });
+  return true;
 }
 
 function checkVoiceStatus() {
@@ -1543,10 +1720,12 @@ function checkVoiceStatus() {
       state.voiceReady = !!status.enabled;
       state.voiceError = status.enabled ? '' : '语音未接';
       serverStateEl.textContent = status.enabled ? '本地语音' : '语音未接';
+      serverStateEl.title = '';
       if (status.cast && status.cast.voice) {
         serverStateEl.title = status.cast.voice;
       }
       updateDialogControls();
+      loadVoiceResources();
     })
     .catch(() => {
       if (browserVoiceFallbackEnabled) {
@@ -1575,6 +1754,7 @@ function toggleDialog() {
   state.dialogEnabled = !state.dialogEnabled;
   storeValue('qiban-dialog', state.dialogEnabled ? '1' : '0');
   if (!state.dialogEnabled) {
+    state.voiceRequestId += 1;
     stopCurrentAudio();
   } else {
     setAction('voice');
@@ -1607,6 +1787,7 @@ canvas.addEventListener('pointercancel', () => {
 });
 
 canvas.addEventListener('click', () => {
+  if (playQueuedAudio()) return;
   interactWithCompanion();
 });
 
@@ -1626,8 +1807,23 @@ window.addEventListener('keydown', (event) => {
 personaButtons.female.addEventListener('click', () => setPersona('female'));
 personaButtons.male.addEventListener('click', () => setPersona('male'));
 if (dialogButton) {
-  dialogButton.addEventListener('click', toggleDialog);
+  dialogButton.addEventListener('click', () => {
+    if (playQueuedAudio()) return;
+    toggleDialog();
+  });
 }
+if (voiceButton) {
+  voiceButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setVoicePanelOpen(!state.voicePanelOpen);
+  });
+}
+if (voicePanel) {
+  voicePanel.addEventListener('click', (event) => event.stopPropagation());
+}
+document.addEventListener('click', () => {
+  if (state.voicePanelOpen) setVoicePanelOpen(false);
+});
 actionButtons.forEach((button) => {
   button.addEventListener('click', () => setAction(button.dataset.action));
 });

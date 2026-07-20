@@ -62,6 +62,12 @@ def _add_hz(a: str, b: str) -> str:
     return f"{_num(a) + _num(b):+d}Hz"
 
 
+def _infer_gender(persona_id: str, gender: str | None = None) -> str:
+    if gender in {"female", "male"}:
+        return gender
+    return "male" if ("male" in persona_id and "female" not in persona_id) else "female"
+
+
 def resolve_cast(
     persona_id: str,
     relationship_id: str | None = None,
@@ -99,7 +105,7 @@ def resolve_cast(
 
     # 声线覆盖（SPEC §3.7b）：整组替换 voice/style/rate/pitch
     if archetype:
-        g = gender or ("male" if ("male" in persona_id and "female" not in persona_id) else "female")
+        g = _infer_gender(persona_id, gender)
         arch = ((data.get("archetypes") or {}).get(g) or {}).get(archetype)
         if isinstance(arch, dict):
             result["voice"] = str(arch.get("edge_tts_voice") or result["voice"])
@@ -114,6 +120,63 @@ def resolve_cast(
         result["pitch"] = _add_hz(result["pitch"], str(prosody.get("pitch") or "+0Hz"))
 
     return result
+
+
+def list_voice_resources(
+    persona_id: str,
+    relationship_id: str | None = None,
+    *,
+    persona_voice: dict | None = None,
+    voices_path: str = DEFAULT_VOICES_PATH,
+    gender: str | None = None,
+) -> list[dict]:
+    """列出当前人格可选声线资源。
+
+    返回内容是前端可直接渲染的轻量列表，全部来自 voices.yaml 与人格默认音色；
+    不 import TTS 重依赖、不触网。
+    """
+    g = _infer_gender(persona_id, gender)
+    base = resolve_cast(
+        persona_id,
+        relationship_id,
+        persona_voice=persona_voice,
+        voices_path=voices_path,
+        gender=g,
+    )
+    resources = [{
+        "id": "default",
+        "archetype": "",
+        "name": "随身份",
+        "description": "按当前关系身份自动选择声线",
+        "provider": "edge_tts",
+        "engine": "edge_tts",
+        "voice": base["voice"],
+        "style": base["style"],
+        "rate": base["rate"],
+        "pitch": base["pitch"],
+        "gender": g,
+        "default": True,
+    }]
+
+    data = _load(voices_path)
+    for key, entry in (((data.get("archetypes") or {}).get(g) or {}).items()):
+        if not isinstance(entry, dict):
+            continue
+        resources.append({
+            "id": key,
+            "archetype": key,
+            "name": str(entry.get("name") or key),
+            "description": str(entry.get("description") or ""),
+            "provider": "edge_tts",
+            "engine": "edge_tts",
+            "voice": str(entry.get("edge_tts_voice") or ""),
+            "style": str(entry.get("style") or ""),
+            "rate": str(entry.get("rate") or "+0%"),
+            "pitch": str(entry.get("pitch") or "+0Hz"),
+            "gender": g,
+            "default": False,
+        })
+    return resources
 
 
 _CLONE_NAMES = {"clone", "gpt_sovits", "gpt-sovits", "sovits"}

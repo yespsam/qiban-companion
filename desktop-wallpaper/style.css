@@ -152,6 +152,45 @@ h1 {
   white-space: nowrap;
 }
 
+.voice-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(max(22px, env(safe-area-inset-bottom)) + 54px);
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(96px, 1fr));
+  gap: 6px;
+  width: min(292px, calc(100vw - 24px));
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(8, 12, 10, 0.72);
+  backdrop-filter: blur(16px);
+  transform: translateX(-50%);
+}
+
+.voice-panel[hidden] {
+  display: none;
+}
+
+.voice-option {
+  min-height: 38px;
+  border: 1px solid rgba(246, 240, 231, 0.14);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.voice-option.active {
+  border-color: transparent;
+  background: var(--accent);
+  color: #06110a;
+  font-weight: 700;
+}
+
 @keyframes enter {
   from {
     opacity: 0;
@@ -209,7 +248,7 @@ h1 {
     width: auto;
     min-width: 0;
     height: 32px;
-    padding: 0 12px;
+    padding: 0 10px;
     font-size: 12px;
   }
 
@@ -224,5 +263,17 @@ h1 {
 
   .server-state {
     display: none;
+  }
+
+  .voice-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: min(286px, calc(100vw - 18px));
+    bottom: calc(max(22px, env(safe-area-inset-bottom)) + 50px);
+  }
+
+  .voice-option {
+    min-height: 36px;
+    padding: 0 8px;
+    font-size: 12px;
   }
 }

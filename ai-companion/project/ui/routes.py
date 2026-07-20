@@ -12,6 +12,7 @@ import importlib
 import inspect
 import time
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Body, Request
 from fastapi.encoders import jsonable_encoder
@@ -19,8 +20,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from core.logging_utils import get_logger
-from voice.casting import (is_clone_engine_name, prosody_kwargs, resolve_cast,
-                           resolve_clone_ref)
+from voice.casting import (is_clone_engine_name, list_voice_resources,
+                           prosody_kwargs, resolve_cast, resolve_clone_ref)
 
 logger = get_logger(__name__)
 
@@ -198,6 +199,91 @@ async def voice_speak(request: Request):
     if not audio:
         return _err(400, "空音频：请使用麦克风录制后再发送")
     return await _stt_transcribe(st, audio, ctype)
+
+
+@router.get("/api/voice/voices")
+def voice_voices(request: Request, persona: Optional[str] = None):
+    """GET /api/voice/voices → 当前人格可选声线资源。"""
+    st = _state(request)
+    persona_id = _normalize_persona_id(persona) or getattr(st.settings, "active_persona", "")
+    persona_obj = None
+    if st.persona_manager is not None:
+        try:
+            persona_obj = st.persona_manager.get(persona_id)
+        except Exception:
+            persona_obj = None
+    gender = getattr(persona_obj, "gender", None)
+    voice_cfg = getattr(persona_obj, "voice", None) or {}
+    resources = list_voice_resources(
+        persona_id,
+        getattr(st.settings, "active_relationship", None),
+        persona_voice=voice_cfg if isinstance(voice_cfg, dict) else None,
+        gender=gender,
+    )
+    active = getattr(st.settings, "active_archetype", "") or ""
+    if active and active not in {item["archetype"] for item in resources}:
+        active = ""
+    return {
+        "enabled": bool(getattr(st.settings, "voice_enabled", False)),
+        "pipeline_ready": st.voice is not None,
+        "tts_engine": getattr(st.settings, "tts_engine", ""),
+        "persona": {
+            "id": persona_id,
+            "gender": gender,
+            "display_name": getattr(persona_obj, "display_name", persona_id),
+        },
+        "active_archetype": active,
+        "resources": resources,
+        "providers": [
+            {
+                "id": "edge_tts",
+                "name": "Edge Neural TTS",
+                "status": "ready",
+                "note": "当前默认真实声音资源，启动脚本会自动安装 edge-tts。",
+            },
+            {
+                "id": "clone",
+                "name": "本地克隆声优",
+                "status": "reserved",
+                "note": "接入 GPT-SoVITS / CosyVoice 兼容服务后可上传参考音频。",
+            },
+        ],
+    }
+
+
+@router.post("/api/voice/select")
+def voice_select(request: Request, payload: dict = Body(...)):
+    """POST /api/voice/select → 持久化当前声线 archetype。"""
+    st = _state(request)
+    persona_id = _normalize_persona_id((payload or {}).get("persona")) or getattr(
+        st.settings, "active_persona", ""
+    )
+    persona_obj = None
+    if st.persona_manager is not None:
+        try:
+            persona_obj = st.persona_manager.get(persona_id)
+        except Exception:
+            persona_obj = None
+    raw = str((payload or {}).get("archetype") or (payload or {}).get("voice") or "").strip()
+    archetype = "" if raw in {"", "default", "auto"} else raw
+    resources = list_voice_resources(
+        persona_id,
+        getattr(st.settings, "active_relationship", None),
+        persona_voice=getattr(persona_obj, "voice", None),
+        gender=getattr(persona_obj, "gender", None),
+    )
+    allowed = {item["archetype"] for item in resources}
+    if archetype not in allowed:
+        return _err(400, f"声线不存在：{archetype}", allowed=sorted(item["id"] for item in resources))
+    st.settings.active_archetype = archetype
+    st.persist_settings()
+    selected = next((item for item in resources if item["archetype"] == archetype), resources[0])
+    return {
+        "ok": True,
+        "active_archetype": archetype,
+        "selected": selected,
+        "resources": resources,
+    }
 
 
 async def _tts_reply(
