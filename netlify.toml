@@ -1,2 +1,26 @@
 [build]
   publish = "."
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/api/voice/status"
+  to = "/.netlify/functions/voice-status"
+  status = 200
+
+[[redirects]]
+  from = "/api/voice/voices"
+  to = "/.netlify/functions/voice-voices"
+  status = 200
+
+[[redirects]]
+  from = "/api/voice/select"
+  to = "/.netlify/functions/voice-select"
+  status = 200
+
+[[redirects]]
+  from = "/api/voice/speak"
+  to = "/.netlify/functions/voice-speak"
+  status = 200

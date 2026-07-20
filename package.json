@@ -1,0 +1,9 @@
+{
+  "name": "qiban-companion",
+  "version": "0.2.4",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@andresaya/edge-tts": "^1.8.0"
+  }
+}

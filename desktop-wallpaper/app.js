@@ -59,21 +59,28 @@ function storedVoiceArchetype(personaId) {
 function resolveApiBase() {
   const explicit = params.get('api');
   if (explicit) return explicit.replace(/\/+$/, '');
-  const apiPort = params.get('apiPort') || params.get('port') || storedValue('qiban-api-port') || '8766';
+  const storedPort = storedValue('qiban-api-port');
+  const hasExplicitPort = params.has('apiPort') || params.has('port') || !!storedPort;
+  const hostname = window.location.hostname || '';
+  const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0', ''].includes(hostname) || hostname.endsWith('.local');
+  if (!hasExplicitPort && window.location.protocol !== 'file:' && !isLocalHost) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+  const apiPort = params.get('apiPort') || params.get('port') || storedPort || '8766';
   if (apiPort === 'same') return window.location.origin.replace(/\/+$/, '');
   const protocol = window.location.protocol === 'file:' ? 'http:' : window.location.protocol;
-  const host = params.get('apiHost') || window.location.hostname || '127.0.0.1';
+  const host = params.get('apiHost') || hostname || '127.0.0.1';
   return `${protocol}//${host}:${apiPort}`;
 }
 
-const voiceApiEnabledInPage = enabledParam('voice', false);
+const voiceApiEnabledInPage = enabledParam('voice', true);
 const browserVoiceFallbackEnabled = enabledParam('browserVoice', false);
 const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') === '1');
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
 
-const modelAssetVersion = 'v0.2.3-hd2';
+const modelAssetVersion = 'v0.2.4-cloud-voice';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {

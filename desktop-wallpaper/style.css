@@ -64,14 +64,7 @@ body {
 }
 
 .presence {
-  position: absolute;
-  left: clamp(22px, 5vw, 78px);
-  bottom: clamp(90px, 12vh, 150px);
-  max-width: min(420px, calc(100vw - 44px));
-  z-index: 2;
-  pointer-events: none;
-  text-shadow: 0 12px 40px rgba(0, 0, 0, 0.42);
-  animation: enter 780ms cubic-bezier(.2,.75,.18,1) both;
+  display: none;
 }
 
 .eyebrow {

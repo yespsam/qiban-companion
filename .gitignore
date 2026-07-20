@@ -4,6 +4,7 @@
 .run/
 .netlify/
 .venv/
+node_modules/
 __pycache__/
 *.pyc
 .playwright-cli/
