@@ -80,7 +80,7 @@ const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
 
-const modelAssetVersion = 'v0.2.4-cloud-voice';
+const modelAssetVersion = 'v0.2.4-ready';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -900,20 +900,14 @@ function collectModelBones(root) {
 function activateLoadedModel(id) {
   const entry = modelState.loaded[id];
   if (!entry) {
-    modelState.active = null;
-    modelLayer.visible = false;
-    modelLayer.clear();
-    avatar.visible = false;
+    if (!modelState.active) {
+      modelLayer.visible = false;
+      avatar.visible = false;
+    }
     return;
   }
 
   modelState.active = entry;
-  if (!entry.actions.walk && entry.animationRequests.walk !== 'failed') {
-    modelLayer.visible = false;
-    avatar.visible = false;
-    ensureModelAnimations(id, ['walk']);
-    return;
-  }
 
   if (entry.root.parent !== modelLayer) {
     modelLayer.clear();
@@ -921,6 +915,9 @@ function activateLoadedModel(id) {
   }
   modelLayer.visible = true;
   avatar.visible = false;
+  if (!entry.actions.walk && entry.animationRequests.walk !== 'failed') {
+    ensureModelAnimations(id, ['walk']);
+  }
 }
 
 function loadModel(id) {
