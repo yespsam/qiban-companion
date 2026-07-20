@@ -9,7 +9,9 @@ const dockEl = document.querySelector('.dock');
 const menuButton = document.getElementById('menu-btn');
 const dialogButton = document.getElementById('dialog-btn');
 const voiceButton = document.getElementById('voice-btn');
+const builderButton = document.getElementById('builder-btn');
 const voicePanel = document.getElementById('voice-panel');
+const builderPanel = document.getElementById('builder-panel');
 const personaButtons = {
   female: document.getElementById('female-btn'),
   male: document.getElementById('male-btn')
@@ -48,6 +50,14 @@ function voiceChoiceKey(personaId) {
   return `qiban-voice-archetype-${personaId}`;
 }
 
+function skinChoiceKey(personaId) {
+  return `qiban-skin-${personaId}`;
+}
+
+function motionChoiceKey() {
+  return 'qiban-motion-style';
+}
+
 function hasStoredVoiceChoice(personaId) {
   return params.has('archetype') || storedValue(voiceChoiceKey(personaId)) !== null;
 }
@@ -80,7 +90,7 @@ const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
 
-const modelAssetVersion = 'v0.2.4-ready';
+const modelAssetVersion = 'v0.2.5-skins';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -190,6 +200,148 @@ const personas = {
   }
 };
 
+const skinPresets = {
+  female: [
+    {
+      id: 'qiban',
+      name: '栖白',
+      line: '白色外套和青绿光点，是最接近我的日常样子。',
+      accent: 0x07c160,
+      accentCss: '#07c160',
+      warmCss: '#ff9ab4',
+      tint: 0xffffff,
+      tintStrength: 0,
+      emissive: 0.02,
+      exposure: 1.12,
+      accessories: { halo: false, ribbons: true, cape: false, orbit: false, badge: true }
+    },
+    {
+      id: 'sakura',
+      name: '樱糖',
+      line: '今天换成软一点的粉色，陪你轻松一点。',
+      accent: 0xff7eb6,
+      accentCss: '#ff7eb6',
+      warmCss: '#ffe16b',
+      tint: 0xffd6ea,
+      tintStrength: 0.18,
+      emissive: 0.05,
+      exposure: 1.16,
+      accessories: { halo: true, ribbons: true, cape: false, orbit: false, badge: true }
+    },
+    {
+      id: 'aurora',
+      name: '极光',
+      line: '极光模式启动，我会更醒目地站在你身边。',
+      accent: 0x66e8ff,
+      accentCss: '#66e8ff',
+      warmCss: '#a884ff',
+      tint: 0xb8f4ff,
+      tintStrength: 0.2,
+      emissive: 0.08,
+      exposure: 1.2,
+      accessories: { halo: true, ribbons: false, cape: false, orbit: true, badge: true }
+    }
+  ],
+  male: [
+    {
+      id: 'qiban',
+      name: '栖白',
+      line: '白色外套和青绿眼睛，是我默认守在这里的样子。',
+      accent: 0x7dda96,
+      accentCss: '#7dda96',
+      warmCss: '#9cc8ff',
+      tint: 0xffffff,
+      tintStrength: 0,
+      emissive: 0.02,
+      exposure: 1.1,
+      accessories: { halo: false, ribbons: false, cape: false, orbit: false, badge: true }
+    },
+    {
+      id: 'night',
+      name: '夜航',
+      line: '夜航形态适合安静陪伴，动作会更沉稳。',
+      accent: 0x5bd8ff,
+      accentCss: '#5bd8ff',
+      warmCss: '#8c7bff',
+      tint: 0x9fd7ff,
+      tintStrength: 0.16,
+      emissive: 0.06,
+      exposure: 1.12,
+      accessories: { halo: false, ribbons: false, cape: false, orbit: true, badge: true }
+    },
+    {
+      id: 'ember',
+      name: '曜黑',
+      line: '曜黑形态会更有存在感，适合需要一点力量的时候。',
+      accent: 0xffc457,
+      accentCss: '#ffc457',
+      warmCss: '#ff6a7a',
+      tint: 0xffdf9c,
+      tintStrength: 0.18,
+      emissive: 0.07,
+      exposure: 1.15,
+      accessories: { halo: true, ribbons: false, cape: false, orbit: false, badge: true }
+    }
+  ]
+};
+
+const motionProfiles = {
+  gentle: {
+    name: '温柔',
+    breath: 0.82,
+    sway: 0.72,
+    speed: 0.9,
+    action: 0.92,
+    gaze: 0.7,
+    actions: ['voice', 'nod', 'heart', 'wave']
+  },
+  lively: {
+    name: '元气',
+    breath: 1.16,
+    sway: 1.24,
+    speed: 1.12,
+    action: 1.08,
+    gaze: 1,
+    actions: ['wave', 'heart', 'run', 'voice']
+  },
+  steady: {
+    name: '稳重',
+    breath: 0.7,
+    sway: 0.58,
+    speed: 0.82,
+    action: 0.86,
+    gaze: 0.52,
+    actions: ['nod', 'voice', 'walk', 'heart']
+  }
+};
+
+const builderSteps = [
+  { id: 'persona', name: '角色' },
+  { id: 'skin', name: '皮肤' },
+  { id: 'motion', name: '动作' },
+  { id: 'voice', name: '声音' }
+];
+
+function storedSkinId(personaId) {
+  const presets = skinPresets[personaId] || skinPresets.female;
+  const requested = params.get('skin') || storedValue(skinChoiceKey(personaId));
+  return presets.some((skin) => skin.id === requested) ? requested : presets[0].id;
+}
+
+function storedMotionStyle() {
+  const requested = params.get('motion') || storedValue(motionChoiceKey());
+  return motionProfiles[requested] ? requested : 'gentle';
+}
+
+function currentSkin() {
+  const presets = skinPresets[state.activePersona] || skinPresets.female;
+  return presets.find((skin) => skin.id === state.activeSkin) || presets[0];
+}
+
+function currentMotionProfile() {
+  return motionProfiles[state.motionStyle] || motionProfiles.gentle;
+}
+
 const fallbackVoiceResources = {
   female: [
     { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-XiaoxiaoNeural', rate: '+0%', pitch: '+0Hz' },
@@ -220,8 +372,13 @@ const state = {
   voiceError: '',
   dialogEnabled: dialogEnabledInPage,
   activeVoiceArchetype: '',
+  activeSkin: '',
+  motionStyle: 'gentle',
   voiceResources: [],
   dockOpen: false,
+  builderOpen: false,
+  builderStep: 'persona',
+  builderTimers: [],
   voicePanelOpen: false,
   interactionCount: 0,
   voiceLoading: false,
@@ -235,6 +392,8 @@ const state = {
   voicePrefetchPromise: null
 };
 state.activeVoiceArchetype = storedVoiceArchetype(state.activePersona);
+state.activeSkin = storedSkinId(state.activePersona);
+state.motionStyle = storedMotionStyle();
 state.voiceResources = fallbackVoiceResources[state.activePersona];
 
 const modelState = {
@@ -253,7 +412,8 @@ const rig = {
   maleOnly: [],
   hairStrands: [],
   coatPanels: [],
-  trimPieces: []
+  trimPieces: [],
+  cosmetics: {}
 };
 
 const mats = {
@@ -308,6 +468,7 @@ scene.add(rimLight);
 
 const avatar = new THREE.Group();
 const modelLayer = new THREE.Group();
+const cosmeticLayer = new THREE.Group();
 const body = new THREE.Group();
 const head = new THREE.Group();
 const leftArm = new THREE.Group();
@@ -322,6 +483,7 @@ const rightShin = new THREE.Group();
 scene.add(avatar);
 scene.add(modelLayer);
 modelLayer.visible = false;
+cosmeticLayer.name = 'qiban-cosmetics';
 avatar.visible = false;
 avatar.add(body);
 body.add(head, leftArm, rightArm, leftLeg, rightLeg);
@@ -335,6 +497,7 @@ Object.assign(rig, {
   leftLeg, rightLeg, leftShin, rightShin
 });
 modelState.layer = modelLayer;
+modelState.cosmeticLayer = cosmeticLayer;
 
 function outlinedMesh(geometry, material, outlineScale = 1.035) {
   const wrapper = new THREE.Group();
@@ -441,6 +604,7 @@ function buildCharacter() {
   buildEyesAndFace();
   buildAccessories();
   buildHeart();
+  buildModelCosmetics();
 }
 
 function buildBody() {
@@ -762,6 +926,62 @@ function buildHeart() {
   scene.add(rig.heart);
 }
 
+function makeCosmeticMaterial(opacity = 0.72) {
+  return new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+}
+
+function addCosmetic(geometry, opacity, options = {}) {
+  const mesh = new THREE.Mesh(geometry, makeCosmeticMaterial(opacity));
+  applyTransform(mesh, options);
+  mesh.renderOrder = 3;
+  cosmeticLayer.add(mesh);
+  return mesh;
+}
+
+function buildModelCosmetics() {
+  cosmeticLayer.clear();
+  rig.cosmetics.halo = addCosmetic(new THREE.TorusGeometry(0.16, 0.006, 12, 96), 0.68, {
+    position: [0, 0.92, -0.03],
+    rotation: [Math.PI / 2, 0, 0],
+    scale: [1, 0.7, 1]
+  });
+  rig.cosmetics.orbit = addCosmetic(new THREE.TorusGeometry(0.24, 0.0035, 8, 120), 0.2, {
+    position: [0, 0.2, -0.05],
+    rotation: [Math.PI / 2.7, 0, 0],
+    scale: [1.08, 0.7, 1]
+  });
+  rig.cosmetics.badge = addCosmetic(new THREE.OctahedronGeometry(0.045, 0), 0.92, {
+    position: [0.02, 0.25, 0.13],
+    rotation: [0.15, 0.3, 0.1],
+    scale: [1, 1.15, 1]
+  });
+  rig.cosmetics.capeLeft = addCosmetic(new THREE.PlaneGeometry(0.13, 0.34), 0.12, {
+    position: [-0.2, 0.08, -0.08],
+    rotation: [0.06, 0.2, 0.1]
+  });
+  rig.cosmetics.capeRight = addCosmetic(new THREE.PlaneGeometry(0.13, 0.34), 0.12, {
+    position: [0.2, 0.08, -0.08],
+    rotation: [0.06, -0.2, -0.1]
+  });
+  rig.cosmetics.ribbonLeft = addCosmetic(new THREE.ConeGeometry(0.045, 0.16, 4), 0.82, {
+    position: [-0.25, 0.2, 0.12],
+    rotation: [0.18, 0.1, 0.8],
+    scale: [1.2, 0.72, 1]
+  });
+  rig.cosmetics.ribbonRight = addCosmetic(new THREE.ConeGeometry(0.045, 0.16, 4), 0.82, {
+    position: [0.25, 0.2, 0.12],
+    rotation: [0.18, -0.1, -0.8],
+    scale: [1.2, 0.72, 1]
+  });
+  updateCosmeticLayer();
+}
+
 function easeOutCubic(x) {
   return 1 - Math.pow(1 - x, 3);
 }
@@ -779,6 +999,7 @@ function setPersona(id) {
   storeValue('qiban-persona', id);
   clearVoicePrefetch();
   state.activeVoiceArchetype = storedVoiceArchetype(id);
+  state.activeSkin = storedSkinId(id);
   state.voiceResources = fallbackVoiceResources[id];
   state.voicePanelOpen = false;
   const persona = personas[id];
@@ -806,12 +1027,202 @@ function setPersona(id) {
   Object.entries(personaButtons).forEach(([key, button]) => {
     button.classList.toggle('active', key === id);
   });
+  applyPersonaSkin(false);
   updateDialogControls();
   updateVoiceControls();
+  renderBuilderPanel();
   loadModel(id);
   activateLoadedModel(id);
   loadVoiceResources();
   resize();
+}
+
+function applyPersonaSkin(updateLine = true) {
+  const skin = currentSkin();
+  document.documentElement.style.setProperty('--accent', skin.accentCss || colorToCss(skin.accent));
+  document.documentElement.style.setProperty('--warm', skin.warmCss || '#ff9ab4');
+  renderer.toneMappingExposure = skin.exposure || 1.12;
+  mats.accent.color.setHex(skin.accent);
+  mats.glow.color.setHex(skin.accent);
+  mats.panel.color.setHex(skin.accent);
+  if (rig.heart && rig.heart.main) {
+    rig.heart.main.material.color.setHex(skin.accent);
+  }
+  rimLight.color.setHex(skin.accent);
+  fillLight.color.setHex(skin.accent);
+  if (updateLine) {
+    lineEl.textContent = skin.line || personas[state.activePersona].idleLine;
+  }
+  updateCosmeticLayer();
+  const activeEntry = modelState.loaded[state.activePersona];
+  if (activeEntry && modelState.active === activeEntry) {
+    applyModelSkin(activeEntry);
+  }
+}
+
+function setSkin(id, preview = true) {
+  const presets = skinPresets[state.activePersona] || skinPresets.female;
+  const selected = presets.find((skin) => skin.id === id) || presets[0];
+  state.activeSkin = selected.id;
+  storeValue(skinChoiceKey(state.activePersona), selected.id);
+  applyPersonaSkin(true);
+  renderBuilderPanel();
+  if (preview) setAction('turn');
+}
+
+function setMotionStyle(id, preview = true) {
+  state.motionStyle = motionProfiles[id] ? id : 'gentle';
+  storeValue(motionChoiceKey(), state.motionStyle);
+  renderBuilderPanel();
+  if (preview) setAction(state.motionStyle === 'lively' ? 'wave' : state.motionStyle === 'steady' ? 'nod' : 'heart');
+}
+
+function setBuilderOpen(open) {
+  if (open && !state.dockOpen) setDockOpen(true);
+  state.builderOpen = open;
+  if (builderPanel) builderPanel.hidden = !open;
+  if (builderButton) {
+    builderButton.classList.toggle('active', open);
+    builderButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  if (open && state.voicePanelOpen) setVoicePanelOpen(false);
+  renderBuilderPanel();
+}
+
+function setBuilderStep(stepId) {
+  if (!builderSteps.some((step) => step.id === stepId)) return;
+  state.builderStep = stepId;
+  renderBuilderPanel();
+}
+
+function clearBuilderTimers() {
+  state.builderTimers.forEach((timer) => window.clearTimeout(timer));
+  state.builderTimers = [];
+}
+
+function queueBuilderAction(delay, action) {
+  state.builderTimers.push(window.setTimeout(() => setAction(action), delay));
+}
+
+function runBuilderPreview() {
+  clearBuilderTimers();
+  applyPersonaSkin(true);
+  setAction('turn');
+  queueBuilderAction(900, currentMotionProfile().actions[0] || 'wave');
+  queueBuilderAction(2600, currentMotionProfile().actions[1] || 'heart');
+  if (state.dialogEnabled) {
+    queueBuilderAction(4300, 'voice');
+  }
+}
+
+function builderOption(label, active, onClick, swatch = '') {
+  const option = document.createElement('button');
+  option.className = 'builder-option';
+  option.type = 'button';
+  option.classList.toggle('active', !!active);
+  if (swatch) {
+    const color = document.createElement('span');
+    color.className = 'builder-swatch';
+    color.style.background = swatch;
+    option.appendChild(color);
+  }
+  const text = document.createElement('span');
+  text.textContent = label;
+  option.appendChild(text);
+  option.addEventListener('click', onClick);
+  return option;
+}
+
+function renderBuilderPanel() {
+  if (!builderPanel) return;
+  builderPanel.hidden = !state.builderOpen;
+  if (!state.builderOpen) return;
+  builderPanel.textContent = '';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'builder-steps';
+  builderSteps.forEach((step, index) => {
+    const tab = document.createElement('button');
+    tab.className = 'builder-step';
+    tab.type = 'button';
+    tab.classList.toggle('active', step.id === state.builderStep);
+    tab.textContent = `${index + 1} ${step.name}`;
+    tab.addEventListener('click', () => setBuilderStep(step.id));
+    tabs.appendChild(tab);
+  });
+  builderPanel.appendChild(tabs);
+
+  const options = document.createElement('div');
+  options.className = 'builder-options';
+
+  if (state.builderStep === 'persona') {
+    options.appendChild(builderOption('小栖', state.activePersona === 'female', () => {
+      setPersona('female');
+      setBuilderStep('skin');
+    }, '#ff7eb6'));
+    options.appendChild(builderOption('栖安', state.activePersona === 'male', () => {
+      setPersona('male');
+      setBuilderStep('skin');
+    }, '#7dda96'));
+  }
+
+  if (state.builderStep === 'skin') {
+    (skinPresets[state.activePersona] || []).forEach((skin) => {
+      options.appendChild(builderOption(skin.name, state.activeSkin === skin.id, () => {
+        setSkin(skin.id);
+      }, skin.accentCss || colorToCss(skin.accent)));
+    });
+  }
+
+  if (state.builderStep === 'motion') {
+    Object.entries(motionProfiles).forEach(([id, profile]) => {
+      options.appendChild(builderOption(profile.name, state.motionStyle === id, () => {
+        setMotionStyle(id);
+      }));
+    });
+    ['wave', 'nod', 'heart', 'walk', 'run'].forEach((action) => {
+      const label = personas[state.activePersona].actionLines[action] ? actionButtons.find((button) => button.dataset.action === action)?.textContent || action : action;
+      options.appendChild(builderOption(label, state.action === action, () => setAction(action)));
+    });
+  }
+
+  if (state.builderStep === 'voice') {
+    state.voiceResources.forEach((item) => {
+      options.appendChild(builderOption(item.name || item.id, (item.archetype || '') === (state.activeVoiceArchetype || ''), () => {
+        selectVoiceResource(item.archetype || '');
+        setBuilderOpen(true);
+        setBuilderStep('voice');
+      }));
+    });
+  }
+
+  builderPanel.appendChild(options);
+
+  const footer = document.createElement('div');
+  footer.className = 'builder-footer';
+  const currentIndex = builderSteps.findIndex((step) => step.id === state.builderStep);
+  const previous = document.createElement('button');
+  previous.className = 'builder-command';
+  previous.type = 'button';
+  previous.textContent = '上一步';
+  previous.disabled = currentIndex <= 0;
+  previous.addEventListener('click', () => setBuilderStep(builderSteps[Math.max(0, currentIndex - 1)].id));
+  footer.appendChild(previous);
+
+  const next = document.createElement('button');
+  next.className = 'builder-command primary';
+  next.type = 'button';
+  next.textContent = currentIndex >= builderSteps.length - 1 ? '生成' : '下一步';
+  next.addEventListener('click', () => {
+    if (currentIndex >= builderSteps.length - 1) {
+      runBuilderPreview();
+      setBuilderOpen(false);
+      return;
+    }
+    setBuilderStep(builderSteps[currentIndex + 1].id);
+  });
+  footer.appendChild(next);
+  builderPanel.appendChild(footer);
 }
 
 function setAction(action) {
@@ -859,6 +1270,12 @@ function tuneTexture(texture, colorSpace = null) {
 }
 
 function enhanceLoadedMaterial(material) {
+  if (!material.userData.qibanBaseColor && material.color) {
+    material.userData.qibanBaseColor = material.color.clone();
+  }
+  if (!material.userData.qibanBaseEmissive && material.emissive) {
+    material.userData.qibanBaseEmissive = material.emissive.clone();
+  }
   tuneTexture(material.map, THREE.SRGBColorSpace);
   tuneTexture(material.emissiveMap, THREE.SRGBColorSpace);
   tuneTexture(material.normalMap);
@@ -874,6 +1291,79 @@ function enhanceLoadedMaterial(material) {
     material.metalness = Math.min(material.metalness || 0, 0.08);
   }
   material.needsUpdate = true;
+}
+
+function colorToCss(hex) {
+  return `#${hex.toString(16).padStart(6, '0')}`;
+}
+
+function applyModelSkin(entry) {
+  if (!entry) return;
+  const skin = currentSkin();
+  const tintColor = new THREE.Color(skin.tint);
+  const emissiveColor = new THREE.Color(skin.accent);
+  entry.root.traverse((object) => {
+    if (!object.isMesh && !object.isSkinnedMesh) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.filter(Boolean).forEach((material) => {
+      if (material.color) {
+        const base = material.userData.qibanBaseColor || material.color;
+        material.color.copy(base).lerp(tintColor, skin.tintStrength);
+      }
+      if (material.emissive) {
+        material.emissive.copy(emissiveColor).multiplyScalar(skin.emissive);
+      }
+      if ('roughness' in material) {
+        material.roughness = Math.max(0.34, Math.min(0.7, material.roughness || 0.58));
+      }
+      material.needsUpdate = true;
+    });
+  });
+}
+
+function setCosmeticVisible(name, visible) {
+  if (rig.cosmetics[name]) rig.cosmetics[name].visible = visible;
+}
+
+function updateCosmeticLayer() {
+  const skin = currentSkin();
+  const features = skin.accessories || {};
+  const accent = new THREE.Color(skin.accent);
+  cosmeticLayer.visible = true;
+  cosmeticLayer.children.forEach((child) => {
+    if (child.material && child.material.color) {
+      child.material.color.copy(accent);
+      child.material.needsUpdate = true;
+    }
+  });
+  setCosmeticVisible('halo', !!features.halo);
+  setCosmeticVisible('orbit', !!features.orbit);
+  setCosmeticVisible('badge', !!features.badge);
+  setCosmeticVisible('capeLeft', !!features.cape);
+  setCosmeticVisible('capeRight', !!features.cape);
+  setCosmeticVisible('ribbonLeft', !!features.ribbons);
+  setCosmeticVisible('ribbonRight', !!features.ribbons);
+}
+
+function updateCosmeticMotion(t) {
+  const skin = currentSkin();
+  const profile = currentMotionProfile();
+  if (rig.cosmetics.halo) {
+    rig.cosmetics.halo.rotation.z = t * 0.42 * profile.speed;
+    rig.cosmetics.halo.position.y = 0.92 + Math.sin(t * 1.8) * 0.01 * profile.breath;
+  }
+  if (rig.cosmetics.orbit) {
+    rig.cosmetics.orbit.rotation.z = t * 0.34 * profile.speed;
+    rig.cosmetics.orbit.material.opacity = (skin.accessories.orbit ? 0.2 : 0) + Math.sin(t * 2.4) * 0.025;
+  }
+  if (rig.cosmetics.badge) {
+    rig.cosmetics.badge.rotation.y = t * 1.2;
+    rig.cosmetics.badge.scale.setScalar(1 + Math.sin(t * 3) * 0.04);
+  }
+  if (rig.cosmetics.capeLeft && rig.cosmetics.capeRight) {
+    rig.cosmetics.capeLeft.rotation.z = 0.1 + Math.sin(t * 1.3) * 0.025;
+    rig.cosmetics.capeRight.rotation.z = -0.1 - Math.sin(t * 1.25) * 0.025;
+  }
 }
 
 function collectModelBones(root) {
@@ -912,7 +1402,10 @@ function activateLoadedModel(id) {
   if (entry.root.parent !== modelLayer) {
     modelLayer.clear();
     modelLayer.add(entry.root);
+    modelLayer.add(cosmeticLayer);
   }
+  applyModelSkin(entry);
+  updateCosmeticLayer();
   modelLayer.visible = true;
   avatar.visible = false;
   if (!entry.actions.walk && entry.animationRequests.walk !== 'failed') {
@@ -938,7 +1431,8 @@ function loadModel(id) {
           animationRequests: {},
           actions: {},
           mixer: new THREE.AnimationMixer(root),
-          activeAnimation: ''
+          activeAnimation: '',
+          activeAction: null
         };
         modelState.loaded[id] = entry;
         modelState.loading[id] = false;
@@ -1007,16 +1501,21 @@ function playModelAnimation(entry, name) {
   const selected = entry.actions[name];
   if (!selected) return false;
   if (entry.activeAnimation === name) return true;
-  Object.values(entry.actions).forEach((action) => {
-    action.paused = false;
-    action.stop();
-  });
+  const previous = entry.activeAction;
+  const profile = currentMotionProfile();
+  const fade = Math.max(0.16, Math.min(0.38, 0.26 / profile.speed));
+  if (previous && previous !== selected) {
+    previous.paused = false;
+    previous.fadeOut(fade);
+  }
   const shouldLoop = loopingModelActions.has(name);
   selected.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
   selected.clampWhenFinished = !shouldLoop;
   selected.enabled = true;
-  selected.reset().play();
+  selected.setEffectiveWeight(1);
+  selected.reset().fadeIn(fade).play();
   selected.paused = false;
+  entry.activeAction = selected;
   entry.activeAnimation = name;
   return true;
 }
@@ -1034,6 +1533,7 @@ function poseModelAnimation(entry, name, time) {
     action.reset().play();
     entry.activeAnimation = `pose:${name}`;
   }
+  entry.activeAction = action;
   action.paused = false;
   entry.mixer.setTime(Math.max(0, Math.min(time, action.getClip().duration - 0.001)));
   action.paused = true;
@@ -1046,6 +1546,7 @@ function stopModelAnimation(entry) {
     action.paused = false;
     action.stop();
   });
+  entry.activeAction = null;
   entry.activeAnimation = '';
 }
 
@@ -1139,12 +1640,13 @@ function updateModelPose(t, delta = 0) {
   if (!entry) return;
 
   const elapsed = t - state.actionStarted;
-  const breath = Math.sin(t * 2.1) * 0.018;
-  const sway = Math.sin(t * 0.76) * 0.03;
+  const profile = currentMotionProfile();
+  const breath = Math.sin(t * 2.1 * profile.speed) * 0.018 * profile.breath;
+  const sway = Math.sin(t * 0.76 * profile.speed) * 0.03 * profile.sway;
   const pointerLag = Math.max(0, 1 - (t - state.lastPointerMovedAt) / 3);
 
   applyModelFrameScale(modelFrameScaleMultiplier(), breath * 0.2);
-  modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04;
+  modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04 + Math.sin(t * 0.32) * 0.008 * profile.gaze;
   modelLayer.rotation.z = sway * 0.08;
 
   if (state.action === 'idle' && playModelAnimation(entry, 'idle')) {
@@ -1157,7 +1659,7 @@ function updateModelPose(t, delta = 0) {
     entry.mixer.update(delta);
     const locomotion = state.action === 'walk' || state.action === 'run';
     if (locomotion) {
-      applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9)) * 0.01);
+      applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9) * profile.speed) * 0.01 * profile.action);
     }
     addModelLookOffset(entry, pointerLag, sway, state.action === 'voice' ? 0.45 : 0.65);
     if (state.action === 'voice') {
@@ -1170,9 +1672,9 @@ function updateModelPose(t, delta = 0) {
   }
 
   if (state.action === 'walk' || state.action === 'run') {
-    const duration = state.action === 'walk' ? 3.8 : 2.8;
-    applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9)) * 0.01);
-    updateModelLocomotionFallback(entry, elapsed, state.action === 'walk' ? 6 : 10, state.action === 'walk' ? 1 : 1.35);
+    const duration = (state.action === 'walk' ? 3.8 : 2.8) / profile.action;
+    applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9) * profile.speed) * 0.01 * profile.action);
+    updateModelLocomotionFallback(entry, elapsed, (state.action === 'walk' ? 6 : 10) * profile.speed, (state.action === 'walk' ? 1 : 1.35) * profile.action);
     finishActionIfNeeded(elapsed, duration);
     return;
   }
@@ -1202,8 +1704,8 @@ function updateModelPose(t, delta = 0) {
   }
 
   if (state.action === 'wave') {
-    const duration = 2.4;
-    const p = Math.min(elapsed / 2.4, 1);
+    const duration = 2.4 / profile.action;
+    const p = Math.min(elapsed / duration, 1);
     const envelope = Math.sin(p * Math.PI);
     addBoneRotation(entry, 'Spine01', 0, 0, -0.05 * envelope);
     addBoneRotation(entry, 'RightShoulder', 0, 0, -0.34 * envelope);
@@ -1215,7 +1717,7 @@ function updateModelPose(t, delta = 0) {
   }
 
   if (state.action === 'nod') {
-    const duration = 1.55;
+    const duration = 1.55 / profile.action;
     const p = Math.min(elapsed / duration, 1);
     const envelope = Math.sin(p * Math.PI);
     addBoneRotation(entry, 'Head', Math.sin(p * Math.PI * 4) * 0.16 * envelope, 0, 0);
@@ -1223,14 +1725,14 @@ function updateModelPose(t, delta = 0) {
   }
 
   if (state.action === 'turn') {
-    const duration = 2.15;
+    const duration = 2.15 / profile.action;
     const p = Math.min(elapsed / duration, 1);
     modelLayer.rotation.y = state.dragYaw + easeInOut(p) * Math.PI * 2;
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'heart') {
-    const duration = 2.25;
+    const duration = 2.25 / profile.action;
     const p = Math.min(elapsed / duration, 1);
     const envelope = Math.sin(p * Math.PI);
     addBoneRotation(entry, 'Spine', 0.025 * envelope, 0, 0);
@@ -1246,7 +1748,7 @@ function updateModelPose(t, delta = 0) {
 
   if (state.action === 'voice') {
     const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
-    const duration = voiceActive ? 4.2 : 2.1;
+    const duration = (voiceActive ? 4.2 : 2.1) / profile.action;
     const p = Math.min(elapsed / duration, 1);
     const envelope = Math.sin(p * Math.PI);
     addBoneRotation(entry, 'Head', Math.sin(t * 9) * 0.018 * (state.speaking ? 1 : envelope), 0, 0);
@@ -1273,10 +1775,11 @@ function applyPersonaShape(persona) {
 
 function updateBasePose(t) {
   const persona = personas[state.activePersona];
+  const profile = currentMotionProfile();
   applyPersonaShape(persona);
 
-  const breath = Math.sin(t * 2.1) * 0.018;
-  const sway = Math.sin(t * 0.76) * 0.022;
+  const breath = Math.sin(t * 2.1 * profile.speed) * 0.018 * profile.breath;
+  const sway = Math.sin(t * 0.76 * profile.speed) * 0.022 * profile.sway;
   const pointerLag = Math.max(0, 1 - (t - state.lastPointerMovedAt) / 3);
 
   body.position.y = breath * 0.45;
@@ -1428,6 +1931,7 @@ function animate(time) {
 
   if (rig.floor) rig.floor.rotation.z = t * 0.12;
   if (rig.orbit) rig.orbit.rotation.z = t * 0.08;
+  updateCosmeticMotion(t);
   if (rig.particles) {
     rig.particles.rotation.y = t * 0.026;
     rig.particles.rotation.x = Math.sin(t * 0.22) * 0.04;
@@ -1508,6 +2012,14 @@ function setDockOpen(open) {
   if (!open && state.voicePanelOpen) {
     setVoicePanelOpen(false);
   }
+  if (!open && state.builderOpen) {
+    state.builderOpen = false;
+    if (builderPanel) builderPanel.hidden = true;
+    if (builderButton) {
+      builderButton.classList.remove('active');
+      builderButton.setAttribute('aria-expanded', 'false');
+    }
+  }
 }
 
 function updateDialogControls() {
@@ -1545,6 +2057,7 @@ function updateVoiceControls() {
   voiceButton.setAttribute('aria-expanded', state.voicePanelOpen ? 'true' : 'false');
   voiceButton.title = selected && selected.voice ? `${selected.name} · ${selected.voice}` : '选择声线';
   renderVoicePanel();
+  renderBuilderPanel();
 }
 
 function renderVoicePanel() {
@@ -1567,6 +2080,7 @@ function renderVoicePanel() {
 
 function setVoicePanelOpen(open) {
   if (open && !state.dockOpen) setDockOpen(true);
+  if (open && state.builderOpen) setBuilderOpen(false);
   state.voicePanelOpen = open;
   updateVoiceControls();
 }
@@ -1876,8 +2390,9 @@ function checkVoiceStatus() {
 }
 
 function interactWithCompanion() {
-  const silentActions = modelState.active ? ['wave', 'nod', 'heart', 'walk', 'turn', 'run'] : ['wave', 'nod', 'heart', 'turn'];
-  const dialogActions = modelState.active ? ['voice', 'nod', 'heart', 'wave'] : ['wave', 'nod', 'heart'];
+  const profileActions = currentMotionProfile().actions || ['wave', 'nod', 'heart', 'voice'];
+  const silentActions = modelState.active ? profileActions.filter((action) => action !== 'voice').concat(['turn']) : ['wave', 'nod', 'heart', 'turn'];
+  const dialogActions = modelState.active ? profileActions : ['wave', 'nod', 'heart'];
   const actions = state.dialogEnabled ? dialogActions : silentActions;
   const action = actions[state.interactionCount % actions.length];
   state.interactionCount += 1;
@@ -1925,6 +2440,7 @@ canvas.addEventListener('pointercancel', () => {
 
 canvas.addEventListener('click', () => {
   if (state.dockOpen) setDockOpen(false);
+  if (state.builderOpen) setBuilderOpen(false);
   if (playQueuedAudio()) return;
   interactWithCompanion();
 });
@@ -1965,11 +2481,21 @@ if (voiceButton) {
     setVoicePanelOpen(!state.voicePanelOpen);
   });
 }
+if (builderButton) {
+  builderButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setBuilderOpen(!state.builderOpen);
+  });
+}
 if (voicePanel) {
   voicePanel.addEventListener('click', (event) => event.stopPropagation());
 }
+if (builderPanel) {
+  builderPanel.addEventListener('click', (event) => event.stopPropagation());
+}
 document.addEventListener('click', () => {
   if (state.voicePanelOpen) setVoicePanelOpen(false);
+  if (state.builderOpen) setBuilderOpen(false);
   if (state.dockOpen) setDockOpen(false);
 });
 actionButtons.forEach((button) => {
