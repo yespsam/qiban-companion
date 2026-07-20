@@ -51,11 +51,11 @@ function voiceChoiceKey(personaId) {
 }
 
 function skinChoiceKey(personaId) {
-  return `qiban-skin-${personaId}`;
+  return `qiban-skin-v026-${personaId}`;
 }
 
 function motionChoiceKey() {
-  return 'qiban-motion-style';
+  return 'qiban-motion-style-v026';
 }
 
 function hasStoredVoiceChoice(personaId) {
@@ -89,8 +89,9 @@ const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') =
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
+const controlsOpenInPage = enabledParam('controls', false);
 
-const modelAssetVersion = 'v0.2.5-skins';
+const modelAssetVersion = 'v0.2.6-visible';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -322,15 +323,21 @@ const builderSteps = [
   { id: 'voice', name: '声音' }
 ];
 
+const defaultSkinIds = {
+  female: 'sakura',
+  male: 'night'
+};
+
 function storedSkinId(personaId) {
   const presets = skinPresets[personaId] || skinPresets.female;
   const requested = params.get('skin') || storedValue(skinChoiceKey(personaId));
-  return presets.some((skin) => skin.id === requested) ? requested : presets[0].id;
+  const fallback = defaultSkinIds[personaId] || presets[0].id;
+  return presets.some((skin) => skin.id === requested) ? requested : fallback;
 }
 
 function storedMotionStyle() {
   const requested = params.get('motion') || storedValue(motionChoiceKey());
-  return motionProfiles[requested] ? requested : 'gentle';
+  return motionProfiles[requested] ? requested : 'lively';
 }
 
 function currentSkin() {
@@ -2507,7 +2514,7 @@ buildCharacter();
 preloadModels();
 setPersona(state.activePersona);
 setAction('idle');
-setDockOpen(false);
+setDockOpen(controlsOpenInPage);
 checkVoiceStatus();
 resize();
 requestAnimationFrame(animate);
