@@ -1,4 +1,5 @@
 dist/
+node_modules/
 meshy_output/
 ai-companion/project/.venv/
 ai-companion/project/data/
