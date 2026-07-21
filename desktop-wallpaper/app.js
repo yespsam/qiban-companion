@@ -91,7 +91,7 @@ const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Num
 const stageEnabled = enabledParam('stage', false);
 const controlsOpenInPage = enabledParam('controls', false);
 
-const modelAssetVersion = 'v0.2.7-motion';
+const modelAssetVersion = 'v0.2.8-model-load';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -1399,7 +1399,7 @@ function activateLoadedModel(id) {
   if (!entry) {
     if (!modelState.active) {
       modelLayer.visible = false;
-      avatar.visible = false;
+      avatar.visible = true;
     }
     return;
   }
@@ -1424,38 +1424,35 @@ function loadModel(id) {
   const asset = modelAssets[id];
   if (!asset || !asset.model || modelState.loaded[id] || modelState.loading[id]) return;
   modelState.loading[id] = true;
-  fetch(asset.model, { method: 'HEAD' })
-    .then((response) => {
-      if (!response.ok) throw new Error('model not found');
-      gltfLoader.load(asset.model, (gltf) => {
-        const root = gltf.scene;
-        normalizeLoadedModel(root);
-        const entry = {
-          root,
-          bones: collectModelBones(root),
-          clips: gltf.animations || [],
-          animationClips: {},
-          animationRequests: {},
-          actions: {},
-          mixer: new THREE.AnimationMixer(root),
-          activeAnimation: '',
-          activeAction: null
-        };
-        modelState.loaded[id] = entry;
-        modelState.loading[id] = false;
-        if (state.activePersona === id) {
-          activateLoadedModel(id);
-          resize();
-        }
-      }, undefined, () => {
-        modelState.loading[id] = false;
-        if (state.activePersona === id) activateLoadedModel(id);
-      });
-    })
-    .catch(() => {
-      modelState.loading[id] = false;
-      if (state.activePersona === id) activateLoadedModel(id);
-    });
+  gltfLoader.load(asset.model, (gltf) => {
+    const root = gltf.scene;
+    normalizeLoadedModel(root);
+    const entry = {
+      root,
+      bones: collectModelBones(root),
+      clips: gltf.animations || [],
+      animationClips: {},
+      animationRequests: {},
+      actions: {},
+      mixer: new THREE.AnimationMixer(root),
+      activeAnimation: '',
+      activeAction: null
+    };
+    modelState.loaded[id] = entry;
+    modelState.loading[id] = false;
+    if (state.activePersona === id) {
+      activateLoadedModel(id);
+      resize();
+    }
+  }, undefined, () => {
+    modelState.loading[id] = false;
+    if (state.activePersona === id && !modelState.active) {
+      modelLayer.visible = false;
+      avatar.visible = true;
+      serverStateEl.textContent = '模型未接';
+      serverStateEl.title = '3D 模型加载失败，已临时回退到内置人物。';
+    }
+  });
 }
 
 function preloadModels() {
