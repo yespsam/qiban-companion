@@ -1,6 +1,11 @@
 dist/
 node_modules/
 meshy_output/
+.playwright-cli/
+.run/
+output/
+modeling/
+*.zip
 ai-companion/project/.venv/
 ai-companion/project/data/
 ai-companion/project/logs/
