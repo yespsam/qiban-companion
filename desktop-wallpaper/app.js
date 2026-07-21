@@ -1,5 +1,6 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
+import { DRACOLoader } from './vendor/DRACOLoader.js';
 
 const canvas = document.getElementById('scene');
 const nameEl = document.getElementById('name');
@@ -94,7 +95,12 @@ const supportedInitialActions = new Set(['idle', 'walk', 'run', 'wave', 'nod', '
 const initialAction = supportedInitialActions.has(params.get('action')) ? params.get('action') : '';
 let pendingInitialAction = initialAction && initialAction !== 'idle' ? initialAction : '';
 
-const modelAssetVersion = 'v0.2.13-motion-redesign-7';
+const wallpaperEl = document.querySelector('.wallpaper');
+if (wallpaperEl && params.get('scene') === 'room') wallpaperEl.classList.add('bg-room');
+if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('bg-night');
+if (params.get('bg') === '0') document.body.classList.add('no-bg');
+
+const modelAssetVersion = 'v0.2.14-optimized-assets-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -117,6 +123,9 @@ const modelAssets = {
 const runtimeModelActions = new Set([]);
 const loopingModelActions = new Set([]);
 const gltfLoader = new GLTFLoader();
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('./vendor/');
+gltfLoader.setDRACOLoader(dracoLoader);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
@@ -2715,7 +2724,7 @@ buildStage();
 buildCharacter();
 preloadModels();
 setPersona(state.activePersona);
-setAction('idle');
+if (!pendingInitialAction) setAction(initialAction || 'idle');
 setDockOpen(controlsOpenInPage);
 checkVoiceStatus();
 resize();

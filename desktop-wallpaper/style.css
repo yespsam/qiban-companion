@@ -30,6 +30,24 @@ body {
   background: transparent;
 }
 
+.wallpaper.bg-room {
+  background:
+    linear-gradient(180deg, rgba(8, 6, 18, 0.04) 0%, rgba(8, 6, 18, 0.14) 100%),
+    url("./assets/bg-room.jpg") center / cover no-repeat;
+}
+
+.wallpaper.bg-night {
+  background:
+    linear-gradient(180deg, rgba(8, 6, 18, 0.02) 0%, rgba(8, 6, 18, 0.18) 100%),
+    url("./assets/bg-night.jpg") center / cover no-repeat;
+}
+
+body.no-bg .wallpaper,
+body.no-bg .wallpaper.bg-room,
+body.no-bg .wallpaper.bg-night {
+  background: transparent;
+}
+
 .wallpaper::before {
   content: none;
 }
