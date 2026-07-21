@@ -91,7 +91,7 @@ const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Num
 const stageEnabled = enabledParam('stage', false);
 const controlsOpenInPage = enabledParam('controls', false);
 
-const modelAssetVersion = 'v0.2.8-model-load';
+const modelAssetVersion = 'v0.2.9-motion-hybrid';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -111,8 +111,8 @@ const modelAssets = {
   }
 };
 
-const runtimeModelActions = new Set([]);
-const loopingModelActions = new Set([]);
+const runtimeModelActions = new Set(['walk', 'run']);
+const loopingModelActions = new Set(['walk', 'run']);
 const gltfLoader = new GLTFLoader();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -1415,9 +1415,7 @@ function activateLoadedModel(id) {
   updateCosmeticLayer();
   modelLayer.visible = true;
   avatar.visible = false;
-  if (!entry.actions.walk && entry.animationRequests.walk !== 'failed') {
-    ensureModelAnimations(id, ['walk']);
-  }
+  ensureModelAnimations(id, ['walk', 'run']);
 }
 
 function loadModel(id) {
@@ -1474,31 +1472,25 @@ function ensureModelAnimations(id, names = null) {
 
 function loadModelAnimation(entry, name, url) {
   entry.animationRequests[name] = 'loading';
-  fetch(url, { method: 'HEAD' })
-    .then((response) => {
-      if (!response.ok) throw new Error('animation not found');
-      gltfLoader.load(url, (gltf) => {
-        const clip = (gltf.animations || []).find((item) => item.duration > 0) || gltf.animations[0];
-        if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) {
-          entry.animationRequests[name] = 'failed';
-          return;
-        }
-        entry.animationClips[name] = clip;
-        const action = entry.mixer.clipAction(clip, entry.root);
-        const shouldLoop = loopingModelActions.has(name);
-        action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
-        action.clampWhenFinished = !shouldLoop;
-        entry.actions[name] = action;
-        entry.animationRequests[name] = 'loaded';
-        if (modelState.active === entry && name === 'walk') {
-          activateLoadedModel(state.activePersona);
-          resize();
-        }
-      });
-    })
-    .catch(() => {
+  gltfLoader.load(url, (gltf) => {
+    const clip = (gltf.animations || []).find((item) => item.duration > 0) || gltf.animations[0];
+    if (!clip || !Number.isFinite(clip.duration) || clip.duration <= 0) {
       entry.animationRequests[name] = 'failed';
-    });
+      return;
+    }
+    entry.animationClips[name] = clip;
+    const action = entry.mixer.clipAction(clip, entry.root);
+    const shouldLoop = loopingModelActions.has(name);
+    action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
+    action.clampWhenFinished = !shouldLoop;
+    entry.actions[name] = action;
+    entry.animationRequests[name] = 'loaded';
+    if (modelState.active === entry && state.action === name) {
+      playModelAnimation(entry, name);
+    }
+  }, undefined, () => {
+    entry.animationRequests[name] = 'failed';
+  });
 }
 
 function playModelAnimation(entry, name) {
@@ -1733,6 +1725,25 @@ function updateModelPose(t, delta = 0) {
   applyModelFrameScale(modelFrameScaleMultiplier(), breath * 0.2);
   modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04 + Math.sin(t * 0.32) * 0.008 * profile.gaze;
   modelLayer.rotation.z = sway * 0.08;
+
+  if ((state.action === 'walk' || state.action === 'run') && playModelAnimation(entry, state.action)) {
+    const isRun = state.action === 'run';
+    const duration = (isRun ? 3.2 : 4.2) / profile.action;
+    const cadence = (isRun ? 8.4 : 5.8) * profile.speed;
+    const bob = Math.abs(Math.sin(elapsed * cadence));
+    const envelope = actionEnvelope(elapsed, duration, 0.18);
+    if (entry.activeAction) {
+      entry.activeAction.setEffectiveTimeScale((isRun ? 1.08 : 0.92) * profile.speed);
+      entry.activeAction.setEffectiveWeight(1);
+    }
+    entry.mixer.update(delta);
+    applyModelFrameScale(1, bob * (isRun ? 0.014 : 0.008) * profile.action * envelope);
+    addModelLookOffset(entry, pointerLag, sway, 0.52);
+    addBoneRotation(entry, 'Spine', 0.006 * envelope, 0, Math.sin(elapsed * cadence * 0.5) * 0.01 * envelope);
+    addBoneRotation(entry, 'Spine01', 0.004 * envelope, 0, Math.sin(elapsed * cadence * 0.5 + 0.4) * 0.006 * envelope);
+    finishActionIfNeeded(elapsed, duration);
+    return;
+  }
 
   resetModelForProceduralPose(entry);
   applyModelNaturalBase(entry, t, breath, sway, pointerLag, state.action === 'voice' ? 0.72 : 1, true);
