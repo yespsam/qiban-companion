@@ -91,7 +91,7 @@ const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Num
 const stageEnabled = enabledParam('stage', false);
 const controlsOpenInPage = enabledParam('controls', false);
 
-const modelAssetVersion = 'v0.2.10-second-motion';
+const modelAssetVersion = 'v0.2.11-second-motion';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -1397,6 +1397,11 @@ function collectModelBones(root) {
 function activateLoadedModel(id) {
   const entry = modelState.loaded[id];
   if (!entry) {
+    if (modelState.loading[id]) {
+      modelLayer.visible = false;
+      avatar.visible = false;
+      return;
+    }
     if (!modelState.active) {
       modelLayer.visible = false;
       avatar.visible = true;
