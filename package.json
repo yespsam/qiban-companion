@@ -1,6 +1,6 @@
 {
   "name": "qiban-companion",
-  "version": "0.2.11",
+  "version": "0.2.13",
   "private": true,
   "type": "module",
   "dependencies": {
