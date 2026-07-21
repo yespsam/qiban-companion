@@ -91,7 +91,7 @@ const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Num
 const stageEnabled = enabledParam('stage', false);
 const controlsOpenInPage = enabledParam('controls', false);
 
-const modelAssetVersion = 'v0.2.6-visible';
+const modelAssetVersion = 'v0.2.7-motion';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -111,8 +111,8 @@ const modelAssets = {
   }
 };
 
-const runtimeModelActions = new Set(['walk', 'run']);
-const loopingModelActions = new Set(['walk', 'run']);
+const runtimeModelActions = new Set([]);
+const loopingModelActions = new Set([]);
 const gltfLoader = new GLTFLoader();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
@@ -1583,16 +1583,97 @@ function addBoneRotation(entry, name, x = 0, y = 0, z = 0) {
   bone.rotation.z += z;
 }
 
-function updateModelLocomotionFallback(entry, elapsed, speed, intensity) {
+function addBonePosition(entry, name, x = 0, y = 0, z = 0) {
+  const bone = entry.bones[name];
+  if (!bone) return;
+  bone.position.x += x;
+  bone.position.y += y;
+  bone.position.z += z;
+}
+
+function clamp01(value) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function actionEnvelope(elapsed, duration, edge = 0.22) {
+  const p = clamp01(elapsed / duration);
+  const attack = clamp01(p / edge);
+  const release = clamp01((1 - p) / edge);
+  return Math.min(easeOutCubic(attack), easeOutCubic(release));
+}
+
+function smoothStep01(value) {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
+}
+
+function cycleBalance(value) {
+  return Math.sin(value) * (0.86 + Math.abs(Math.sin(value * 0.5)) * 0.14);
+}
+
+function resetModelForProceduralPose(entry) {
+  stopModelAnimation(entry);
   resetModelBones(entry);
-  const gait = Math.sin(elapsed * speed);
-  addBoneRotation(entry, 'Spine', 0.04, 0, gait * 0.04);
-  addBoneRotation(entry, 'LeftArm', gait * 0.16 * intensity, 0.04, -0.18);
-  addBoneRotation(entry, 'RightArm', -gait * 0.16 * intensity, -0.04, 0.18);
-  addBoneRotation(entry, 'LeftLeg', -gait * 0.28 * intensity, 0, 0);
-  addBoneRotation(entry, 'RightLeg', gait * 0.28 * intensity, 0, 0);
-  addBoneRotation(entry, 'LeftFoot', Math.max(0, gait) * 0.12 * intensity, 0, 0);
-  addBoneRotation(entry, 'RightFoot', Math.max(0, -gait) * 0.12 * intensity, 0, 0);
+}
+
+function applyModelNaturalBase(entry, t, breath, sway, pointerLag, weight = 1, includeArms = true) {
+  const profile = currentMotionProfile();
+  addBonePosition(entry, 'Hips', 0, breath * 0.018 * weight, 0);
+  addBoneRotation(entry, 'Hips', breath * 0.018 * weight, 0, sway * 0.18 * weight);
+  addBoneRotation(entry, 'Spine', 0.018 + breath * 0.32 * weight, 0, sway * 0.28 * weight);
+  addBoneRotation(entry, 'Spine01', 0.012 + breath * 0.24 * weight, 0, sway * 0.18 * weight);
+  addBoneRotation(entry, 'Spine02', 0.006 + breath * 0.14 * weight, 0, sway * 0.12 * weight);
+  addBoneRotation(entry, 'neck', -state.pointerY * 0.035 * pointerLag * weight, state.pointerX * 0.06 * pointerLag * weight, -sway * 0.12 * weight);
+  addBoneRotation(entry, 'Head',
+    -state.pointerY * 0.08 * pointerLag * weight + Math.sin(t * 1.08 * profile.speed) * 0.01,
+    state.pointerX * 0.17 * pointerLag * weight,
+    -sway * 0.32 * weight
+  );
+  if (includeArms) {
+    addBoneRotation(entry, 'LeftShoulder', 0, 0, -1.34 + sway * 0.08 * weight);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, 1.34 + sway * 0.08 * weight);
+    addBoneRotation(entry, 'LeftArm', 1.16, 0.08, -0.28 + sway * 0.04 * weight);
+    addBoneRotation(entry, 'RightArm', 1.16, -0.08, 0.28 + sway * 0.04 * weight);
+    addBoneRotation(entry, 'LeftForeArm', 0.12, 0, -0.1);
+    addBoneRotation(entry, 'RightForeArm', 0.12, 0, 0.1);
+  }
+}
+
+function applyModelLocomotionPose(entry, elapsed, isRun, profile, duration) {
+  const intensity = (isRun ? 1.04 : 0.82) * profile.action;
+  const cadence = (isRun ? 6.6 : 4.2) * profile.speed;
+  const stride = (isRun ? 0.4 : 0.24) * intensity;
+  const knee = (isRun ? 0.48 : 0.3) * intensity;
+  const armSwing = (isRun ? 0.22 : 0.14) * intensity;
+  const phase = elapsed * cadence;
+  const left = cycleBalance(phase);
+  const right = -left;
+  const bob = Math.abs(Math.sin(phase));
+  const heel = Math.cos(phase);
+  const fade = smoothStep01(actionEnvelope(elapsed, duration, 0.22));
+
+  addBonePosition(entry, 'Hips', 0, bob * (isRun ? 0.026 : 0.014) * fade, 0);
+  addBoneRotation(entry, 'Hips', -0.018 * fade, 0, -left * 0.026 * fade);
+  addBoneRotation(entry, 'Spine', 0.026 * fade, 0, left * 0.032 * fade);
+  addBoneRotation(entry, 'Spine01', 0.016 * fade, 0, left * 0.022 * fade);
+  addBoneRotation(entry, 'Spine02', 0.01 * fade, 0, left * 0.012 * fade);
+  addBoneRotation(entry, 'Head', bob * 0.012 * fade, -left * 0.012 * fade, -left * 0.012 * fade);
+
+  addBoneRotation(entry, 'LeftUpLeg', left * stride * fade, 0, 0.022 * fade);
+  addBoneRotation(entry, 'RightUpLeg', right * stride * fade, 0, -0.022 * fade);
+  addBoneRotation(entry, 'LeftLeg', Math.max(0, -left) * knee * fade, 0, 0);
+  addBoneRotation(entry, 'RightLeg', Math.max(0, -right) * knee * fade, 0, 0);
+  addBoneRotation(entry, 'LeftFoot', (-left * 0.075 + Math.max(0, heel) * 0.055) * fade, 0, 0);
+  addBoneRotation(entry, 'RightFoot', (-right * 0.075 + Math.max(0, -heel) * 0.055) * fade, 0, 0);
+  addBoneRotation(entry, 'LeftToeBase', Math.max(0, -heel) * 0.045 * fade, 0, 0);
+  addBoneRotation(entry, 'RightToeBase', Math.max(0, heel) * 0.045 * fade, 0, 0);
+
+  addBoneRotation(entry, 'LeftShoulder', 0, 0, -left * 0.018 * fade);
+  addBoneRotation(entry, 'RightShoulder', 0, 0, right * 0.018 * fade);
+  addBoneRotation(entry, 'LeftArm', -left * armSwing * fade, 0.018 * fade, right * 0.036 * fade);
+  addBoneRotation(entry, 'RightArm', -right * armSwing * fade, -0.018 * fade, left * 0.036 * fade);
+  addBoneRotation(entry, 'LeftForeArm', Math.max(0, left) * 0.065 * fade, 0, -0.026 * fade);
+  addBoneRotation(entry, 'RightForeArm', Math.max(0, right) * 0.065 * fade, 0, 0.026 * fade);
 }
 
 function currentIdlePoseTime() {
@@ -1656,78 +1737,48 @@ function updateModelPose(t, delta = 0) {
   modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04 + Math.sin(t * 0.32) * 0.008 * profile.gaze;
   modelLayer.rotation.z = sway * 0.08;
 
-  if (state.action === 'idle' && playModelAnimation(entry, 'idle')) {
-    entry.mixer.update(delta);
-    addModelLookOffset(entry, pointerLag, sway, 0.72);
-    return;
-  }
-
-  if (runtimeModelActions.has(state.action) && playModelAnimation(entry, state.action)) {
-    entry.mixer.update(delta);
-    const locomotion = state.action === 'walk' || state.action === 'run';
-    if (locomotion) {
-      applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9) * profile.speed) * 0.01 * profile.action);
-    }
-    addModelLookOffset(entry, pointerLag, sway, state.action === 'voice' ? 0.45 : 0.65);
-    if (state.action === 'voice') {
-      if (!state.speaking) finishActionIfNeeded(elapsed, 2.1);
-    } else if (state.action !== 'idle') {
-      const fallback = state.action === 'walk' ? 3.8 : state.action === 'run' ? 2.8 : 3.2;
-      finishActionIfNeeded(elapsed, modelClipDuration(entry, state.action, fallback));
-    }
-    return;
-  }
+  resetModelForProceduralPose(entry);
+  applyModelNaturalBase(entry, t, breath, sway, pointerLag, state.action === 'voice' ? 0.72 : 1, true);
 
   if (state.action === 'walk' || state.action === 'run') {
-    const duration = (state.action === 'walk' ? 3.8 : 2.8) / profile.action;
-    applyModelFrameScale(1, Math.sin(elapsed * (state.action === 'walk' ? 6 : 9) * profile.speed) * 0.01 * profile.action);
-    updateModelLocomotionFallback(entry, elapsed, (state.action === 'walk' ? 6 : 10) * profile.speed, (state.action === 'walk' ? 1 : 1.35) * profile.action);
+    const isRun = state.action === 'run';
+    const duration = (isRun ? 3.2 : 4.2) / profile.action;
+    const bob = Math.abs(Math.sin(elapsed * (isRun ? 7.4 : 4.7) * profile.speed));
+    applyModelFrameScale(1, bob * (isRun ? 0.017 : 0.01) * actionEnvelope(elapsed, duration, 0.18));
+    applyModelLocomotionPose(entry, elapsed, isRun, profile, duration);
     finishActionIfNeeded(elapsed, duration);
     return;
   }
 
-  const basePoseApplied = poseModelAnimation(entry, 'walk', currentIdlePoseTime());
-  if (basePoseApplied) {
-    resetModelBonesByName(entry, [
-      'Hips', 'Spine', 'Spine01', 'Spine02', 'neck', 'Head',
-      'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase',
-      'RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'
-    ]);
-  } else {
-    stopModelAnimation(entry);
-    resetModelBones(entry);
-  }
-
-  addBoneRotation(entry, 'Spine', 0.02 + breath * 0.22, 0, sway * 0.22);
-  addBoneRotation(entry, 'Spine01', 0.01 + breath * 0.18, 0, sway * 0.18);
-  addBoneRotation(entry, 'Head', -state.pointerY * 0.1 * pointerLag, state.pointerX * 0.2 * pointerLag, -sway * 0.35);
-  if (!basePoseApplied) {
-    addBoneRotation(entry, 'LeftShoulder', 0, 0, -1.18);
-    addBoneRotation(entry, 'RightShoulder', 0, 0, 1.18);
-    addBoneRotation(entry, 'LeftArm', 0.08, 0.08, -0.34);
-    addBoneRotation(entry, 'RightArm', 0.08, -0.08, 0.34);
-    addBoneRotation(entry, 'LeftForeArm', 0.1, 0, -0.16);
-    addBoneRotation(entry, 'RightForeArm', 0.1, 0, 0.16);
-  }
-
   if (state.action === 'wave') {
-    const duration = 2.4 / profile.action;
+    const duration = 2.7 / profile.action;
     const p = Math.min(elapsed / duration, 1);
-    const envelope = Math.sin(p * Math.PI);
-    addBoneRotation(entry, 'Spine01', 0, 0, -0.05 * envelope);
-    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.34 * envelope);
-    addBoneRotation(entry, 'RightArm', -0.24 * envelope, -0.08 * envelope, -0.7 * envelope);
-    addBoneRotation(entry, 'RightForeArm', -0.16 * envelope, 0, -0.3 * envelope + Math.sin(elapsed * 12) * 0.18 * envelope);
-    addBoneRotation(entry, 'RightHand', 0, 0, Math.sin(elapsed * 16) * 0.1 * envelope);
-    addBoneRotation(entry, 'Head', 0, 0, 0.035 * envelope);
+    const envelope = smoothStep01(actionEnvelope(elapsed, duration, 0.24));
+    const raise = smoothStep01(clamp01(p * 1.45));
+    const flutter = Math.sin(elapsed * 6.8 * profile.speed) * 0.095 * envelope;
+    addBoneRotation(entry, 'Hips', 0, 0, 0.018 * envelope);
+    addBoneRotation(entry, 'Spine', 0.012 * envelope, 0, -0.026 * envelope);
+    addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.036 * envelope);
+    addBoneRotation(entry, 'Spine02', 0.008 * envelope, 0, -0.02 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0.022 * raise, -0.24 * raise);
+    addBoneRotation(entry, 'RightArm', -1.72 * raise, -0.025 * raise, -0.78 * raise);
+    addBoneRotation(entry, 'RightForeArm', -0.34 * raise, 0.02 * raise, -0.34 * raise + flutter);
+    addBoneRotation(entry, 'RightHand', 0, 0, flutter * 0.48);
+    addBoneRotation(entry, 'LeftArm', 0.024 * envelope, 0.02 * envelope, 0.045 * envelope);
+    addBoneRotation(entry, 'Head', -0.008 * envelope, 0, 0.028 * envelope);
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'nod') {
-    const duration = 1.55 / profile.action;
+    const duration = 1.8 / profile.action;
     const p = Math.min(elapsed / duration, 1);
-    const envelope = Math.sin(p * Math.PI);
-    addBoneRotation(entry, 'Head', Math.sin(p * Math.PI * 4) * 0.16 * envelope, 0, 0);
+    const envelope = actionEnvelope(elapsed, duration, 0.22);
+    const nod = Math.sin(p * Math.PI * 3.5) * 0.13 * envelope;
+    addBoneRotation(entry, 'Spine', -0.012 * envelope, 0, 0);
+    addBoneRotation(entry, 'neck', nod * 0.38, 0, 0);
+    addBoneRotation(entry, 'Head', nod, 0, 0);
+    addBoneRotation(entry, 'LeftArm', 0.02 * envelope, 0, 0.035 * envelope);
+    addBoneRotation(entry, 'RightArm', 0.02 * envelope, 0, -0.035 * envelope);
     finishActionIfNeeded(elapsed, duration);
   }
 
@@ -1739,14 +1790,20 @@ function updateModelPose(t, delta = 0) {
   }
 
   if (state.action === 'heart') {
-    const duration = 2.25 / profile.action;
+    const duration = 2.45 / profile.action;
     const p = Math.min(elapsed / duration, 1);
-    const envelope = Math.sin(p * Math.PI);
-    addBoneRotation(entry, 'Spine', 0.025 * envelope, 0, 0);
-    addBoneRotation(entry, 'LeftArm', -0.2 * envelope, 0.1 * envelope, 0.34 * envelope);
-    addBoneRotation(entry, 'RightArm', -0.2 * envelope, -0.1 * envelope, -0.34 * envelope);
-    addBoneRotation(entry, 'LeftForeArm', -0.12 * envelope, 0, -0.28 * envelope);
-    addBoneRotation(entry, 'RightForeArm', -0.12 * envelope, 0, 0.28 * envelope);
+    const envelope = actionEnvelope(elapsed, duration, 0.2);
+    const pulse = Math.sin(p * Math.PI * 2) * 0.035 * envelope;
+    addBonePosition(entry, 'Hips', 0, 0.012 * envelope, 0);
+    addBoneRotation(entry, 'Spine', 0.045 * envelope, 0, pulse);
+    addBoneRotation(entry, 'Spine01', 0.035 * envelope, 0, pulse * 0.6);
+    addBoneRotation(entry, 'LeftShoulder', 0, 0, 0.1 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.1 * envelope);
+    addBoneRotation(entry, 'LeftArm', -0.22 * envelope, 0.12 * envelope, 0.46 * envelope);
+    addBoneRotation(entry, 'RightArm', -0.22 * envelope, -0.12 * envelope, -0.46 * envelope);
+    addBoneRotation(entry, 'LeftForeArm', -0.16 * envelope, 0, -0.48 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.16 * envelope, 0, 0.48 * envelope);
+    addBoneRotation(entry, 'Head', -0.018 * envelope, 0, -pulse);
     rig.heart.visible = true;
     rig.heart.position.y = 1.7 + easeOutCubic(p) * 0.34;
     rig.heart.scale.setScalar(0.2 * envelope + 0.001);
@@ -1757,10 +1814,18 @@ function updateModelPose(t, delta = 0) {
     const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
     const duration = (voiceActive ? 4.2 : 2.1) / profile.action;
     const p = Math.min(elapsed / duration, 1);
-    const envelope = Math.sin(p * Math.PI);
-    addBoneRotation(entry, 'Head', Math.sin(t * 9) * 0.018 * (state.speaking ? 1 : envelope), 0, 0);
-    addBoneRotation(entry, 'RightArm', -0.16 * envelope, -0.06 * envelope, -0.22 * envelope);
-    addBoneRotation(entry, 'RightForeArm', -0.1 * envelope, 0, -0.18 * envelope);
+    const envelope = voiceActive ? clamp01(p / 0.22) : actionEnvelope(elapsed, duration, 0.24);
+    const talk = state.speaking ? Math.sin(t * 8.2) * 0.018 : 0;
+    const handBeat = Math.sin(t * 3.6 * profile.speed) * 0.07 * envelope;
+    addBoneRotation(entry, 'Hips', 0, 0, 0.012 * envelope);
+    addBoneRotation(entry, 'Spine', 0.018 * envelope, 0, -0.02 * envelope);
+    addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.025 * envelope);
+    addBoneRotation(entry, 'neck', talk * 0.45, 0, 0);
+    addBoneRotation(entry, 'Head', talk, Math.sin(t * 2.2) * 0.018 * envelope, 0.012 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.06 * envelope);
+    addBoneRotation(entry, 'RightArm', -0.16 * envelope + handBeat * 0.35, -0.05 * envelope, -0.28 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.08 * envelope, 0, -0.22 * envelope + handBeat);
+    addBoneRotation(entry, 'LeftArm', 0.04 * envelope, 0.02 * envelope, 0.08 * envelope);
     if (!voiceActive) finishActionIfNeeded(elapsed, duration);
   }
 }
