@@ -113,7 +113,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.19-ui-polish-merged-anims-1';
+const modelAssetVersion = 'v0.2.20-echo-guard-merged-anims-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -570,6 +570,8 @@ const state = {
   mobileRecognition: null,
   mediaRecorder: null,
   mediaChunks: [],
+  discardNextRecognition: false,
+  discardNextRecording: false,
   dockOpen: false,
   builderOpen: false,
   builderStep: 'persona',
@@ -582,6 +584,9 @@ const state = {
   voiceRequestId: 0,
   currentAudio: null,
   currentAudioUrl: null,
+  lastCompanionSpeechText: '',
+  lastCompanionSpeechAt: 0,
+  voiceInputMutedUntil: 0,
   prefetchedVoiceBlob: null,
   prefetchedVoiceKey: '',
   voicePrefetchPromise: null
@@ -1678,9 +1683,87 @@ function setMobileBusy(busy, label = '') {
   setMobileHint(label || (busy ? '回应中' : serverStateEl.textContent || '待机'), busy ? 'busy' : '');
 }
 
+function clockMs() {
+  return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+}
+
+function normalizeEchoText(text) {
+  const withoutThoughts = String(text || '')
+    .toLowerCase()
+    .replace(/<think[\s\S]*?<\/think>/gi, '')
+    .replace(/<think[\s\S]*$/gi, '');
+  return Array.from(withoutThoughts)
+    .filter((char) => /[a-z0-9\u3400-\u9fff]/i.test(char))
+    .join('');
+}
+
+function stripInternalThoughts(text) {
+  return String(text || '')
+    .replace(/<think[\s\S]*?<\/think>/gi, '')
+    .replace(/<think[\s\S]*$/gi, '')
+    .replace(/^\s*(?:内心|心声|思考|thinking)\s*[:：][\s\S]*?(?:回复|回答|正文)\s*[:：]\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function looksLikeLastCompanionSpeech(text) {
+  const heard = normalizeEchoText(text);
+  const spoken = normalizeEchoText(state.lastCompanionSpeechText);
+  if (!heard || !spoken) return false;
+  if (heard === spoken) return true;
+  if (heard.length >= 8 && spoken.includes(heard)) return true;
+  if (spoken.length >= 8 && heard.includes(spoken)) return true;
+  return false;
+}
+
+function voiceInputDropReason(text) {
+  const now = clockMs();
+  if (state.voiceLoading || state.speaking || state.awaitingPlayback) return '伴侣正在说话';
+  if (now < state.voiceInputMutedUntil) return '刚播放完';
+  if (now - state.lastCompanionSpeechAt < 6500 && looksLikeLastCompanionSpeech(text)) {
+    return '识别到刚才的伴侣语音';
+  }
+  return '';
+}
+
+function muteMobileVoiceInput(durationMs = 1800) {
+  state.voiceInputMutedUntil = Math.max(state.voiceInputMutedUntil || 0, clockMs() + durationMs);
+}
+
+function rememberCompanionSpeech(text) {
+  const clean = stripInternalThoughts(text).slice(0, 300);
+  if (clean) state.lastCompanionSpeechText = clean;
+  state.lastCompanionSpeechAt = clockMs();
+  muteMobileVoiceInput(2200);
+}
+
+function stopMobileVoiceCapture(discard = true) {
+  if (state.mobileRecognition) {
+    if (discard) state.discardNextRecognition = true;
+    try {
+      if (state.mobileRecognition.abort) state.mobileRecognition.abort();
+      else state.mobileRecognition.stop();
+    } catch (error) {}
+  }
+  if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+    if (discard) state.discardNextRecording = true;
+    try { state.mediaRecorder.stop(); } catch (error) {}
+  }
+  stopMobileListening();
+}
+
 function extractReplyText(body) {
   if (!body || typeof body !== 'object') return '';
-  return String(body.text || body.reply || body.message || body.answer || '').trim();
+  const thinking = normalizeEchoText(body.thinking || body.reasoning || '');
+  const values = [body.text, body.reply, body.message, body.answer];
+  for (const value of values) {
+    const clean = stripInternalThoughts(value);
+    const normalized = normalizeEchoText(clean);
+    if (!clean || !normalized) continue;
+    if (thinking && (normalized === thinking || thinking.includes(normalized))) continue;
+    return clean;
+  }
+  return '';
 }
 
 function extractReplyAction(body, fallback) {
@@ -1801,6 +1884,11 @@ function toggleMobileVoiceInput() {
     stopMobileListening();
     return;
   }
+  const blocked = voiceInputDropReason('');
+  if (blocked) {
+    setMobileHint(blocked === '刚播放完' ? '稍等一下' : '等我说完', 'speaking');
+    return;
+  }
   if (hasSpeechRecognition()) {
     startSpeechRecognition();
     return;
@@ -1822,6 +1910,14 @@ function startSpeechRecognition() {
   recognition.continuous = false;
   let finalText = '';
   recognition.onstart = () => {
+    if (voiceInputDropReason('')) {
+      state.discardNextRecognition = true;
+      try {
+        if (recognition.abort) recognition.abort();
+        else recognition.stop();
+      } catch (error) {}
+      return;
+    }
     state.mobileListening = true;
     if (mobileMicButton) {
       mobileMicButton.classList.add('recording');
@@ -1840,14 +1936,22 @@ function startSpeechRecognition() {
     if (shown) setMobileHint(shown.slice(0, 28), 'listening');
   };
   recognition.onerror = () => {
+    if (state.discardNextRecognition) return;
     stopMobileListening();
     setMobileHint('没有听清', 'error');
   };
   recognition.onend = () => {
     stopMobileListening();
     state.mobileRecognition = null;
-    if (finalText.trim()) sendMobileChat(finalText, 'voice');
-    else setMobileHint('待机');
+    const text = finalText.trim();
+    if (state.discardNextRecognition) {
+      state.discardNextRecognition = false;
+      setMobileHint(state.speaking ? '正在说话' : '待机', state.speaking ? 'speaking' : '');
+      return;
+    }
+    const dropped = voiceInputDropReason(text);
+    if (text && !dropped) sendMobileChat(text, 'voice');
+    else setMobileHint(dropped ? '已忽略回声' : '待机', dropped ? 'busy' : '');
   };
   try {
     recognition.start();
@@ -1877,8 +1981,15 @@ function startMediaRecording() {
     recorder.onstop = () => {
       stream.getTracks().forEach((track) => track.stop());
       stopMobileListening();
+      const discard = state.discardNextRecording;
+      state.discardNextRecording = false;
       const blob = new Blob(state.mediaChunks, { type: recorder.mimeType || 'audio/webm' });
       state.mediaRecorder = null;
+      if (discard) {
+        state.mediaChunks = [];
+        setMobileHint(state.speaking ? '正在说话' : '待机', state.speaking ? 'speaking' : '');
+        return;
+      }
       transcribeMediaBlob(blob);
     };
     recorder.start();
@@ -1894,7 +2005,7 @@ function transcribeMediaBlob(blob) {
     return;
   }
   setMobileBusy(true, '识别中');
-  fetch(`${voiceApiBase}/api/voice/speak`, {
+  fetch(`${voiceApiBase}/api/voice/transcribe`, {
     method: 'POST',
     headers: { 'Content-Type': blob.type || 'audio/webm' },
     body: blob
@@ -1902,7 +2013,9 @@ function transcribeMediaBlob(blob) {
     .then((body) => {
       const text = String(body?.text || '').trim();
       setMobileBusy(false, text ? '识别完成' : '没有听清');
-      if (text) sendMobileChat(text, 'voice');
+      const dropped = voiceInputDropReason(text);
+      if (text && !dropped) sendMobileChat(text, 'voice');
+      else if (dropped) setMobileHint('已忽略回声', 'busy');
     })
     .catch(() => {
       setMobileBusy(false, '识别失败');
@@ -2924,6 +3037,7 @@ function updatePointer(event) {
 }
 
 function stopCurrentAudio() {
+  stopMobileVoiceCapture(true);
   if (state.currentAudio) {
     try { state.currentAudio.pause(); } catch (error) {}
     if (state.currentAudio.parentNode) {
@@ -2952,6 +3066,7 @@ function finishSpeaking(status = '对话开') {
   state.voiceLoading = false;
   state.speaking = false;
   state.awaitingPlayback = false;
+  muteMobileVoiceInput();
   state.voiceReady = status !== '语音未接';
   state.voiceError = '';
   serverStateEl.textContent = status;
@@ -2962,6 +3077,7 @@ function finishSpeaking(status = '对话开') {
 }
 
 function markVoiceUnavailable(message = '语音未接', detail = '') {
+  stopMobileVoiceCapture(true);
   if (state.currentAudio && state.currentAudio.parentNode) {
     state.currentAudio.parentNode.removeChild(state.currentAudio);
   }
@@ -3174,6 +3290,8 @@ function prefetchVoice() {
 
 function playVoiceBlob(blob, requestId) {
   if (!blob || requestId !== state.voiceRequestId) return;
+  stopMobileVoiceCapture(true);
+  muteMobileVoiceInput(2600);
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
   audio.preload = 'auto';
@@ -3224,8 +3342,10 @@ function playVoiceBlob(blob, requestId) {
 }
 
 function speakCompanionText(text, mood = voiceMood(), visualAction = 'voice') {
-  const cleanText = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const cleanText = stripInternalThoughts(text).slice(0, 300);
   if (!cleanText) return false;
+  rememberCompanionSpeech(cleanText);
+  stopMobileVoiceCapture(true);
   const persona = personas[state.activePersona];
   const requestId = state.voiceRequestId + 1;
   state.voiceRequestId = requestId;
@@ -3275,6 +3395,8 @@ function speakWithBrowserVoice(text) {
     return false;
   }
   const persona = personas[state.activePersona];
+  rememberCompanionSpeech(text);
+  stopMobileVoiceCapture(true);
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'zh-CN';
@@ -3294,6 +3416,8 @@ function speakWithBrowserVoice(text) {
 
 function requestVoice() {
   const persona = personas[state.activePersona];
+  rememberCompanionSpeech(persona.voiceLine);
+  stopMobileVoiceCapture(true);
   const requestId = state.voiceRequestId + 1;
   state.voiceRequestId = requestId;
   lineEl.textContent = persona.voiceLine;
@@ -3345,6 +3469,8 @@ function requestVoice() {
 
 function playQueuedAudio() {
   if (!state.awaitingPlayback || !state.currentAudio) return false;
+  stopMobileVoiceCapture(true);
+  muteMobileVoiceInput(2600);
   state.awaitingPlayback = false;
   state.speaking = true;
   serverStateEl.textContent = '正在说话';

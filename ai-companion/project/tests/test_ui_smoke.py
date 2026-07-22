@@ -231,6 +231,8 @@ def test_optional_subsystems_degraded(client):
 
     resp = client.post("/api/voice/speak", json={"text": "你好"})
     assert resp.status_code == 200 and resp.json()["enabled"] is False
+    resp = client.post("/api/voice/transcribe", content=b"fake audio", headers={"content-type": "audio/webm"})
+    assert resp.status_code == 200 and resp.json()["enabled"] is False
 
     devices = client.get("/api/devices").json()
     assert devices["mihome"]["enabled"] is False

@@ -201,6 +201,19 @@ async def voice_speak(request: Request):
     return await _stt_transcribe(st, audio, ctype)
 
 
+@router.post("/api/voice/transcribe")
+async def voice_transcribe(request: Request):
+    """POST /api/voice/transcribe → 浏览器录音转文字。"""
+    st = _state(request)
+    if not getattr(st.settings, "voice_enabled", False):
+        return _unavailable("语音", st.voice_error)
+    ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    audio = await request.body()
+    if not audio:
+        return _err(400, "空音频：请使用麦克风录制后再发送")
+    return await _stt_transcribe(st, audio, ctype)
+
+
 @router.get("/api/voice/voices")
 def voice_voices(request: Request, persona: Optional[str] = None):
     """GET /api/voice/voices → 当前人格可选声线资源。"""
