@@ -87,6 +87,71 @@ const sceneLibrary = {
   }
 };
 
+// 三拍心声库（察觉→感受→决定）：与本地大脑 mock_backend 的思考风格一致，
+// 云端罐头回复也带上真实内心活动，移动端思考面板不再是空的。
+const thinkingLibrary = {
+  daily: {
+    female: [
+      '他开口了……听这语气，今天不算轻松也不算糟。愿意来找我聊，挺好的。先稳稳接住，陪他慢慢说。',
+      '他说聊日常……其实是想有人陪吧。心里软了一下。不急着给建议，先认真听。'
+    ],
+    male: [
+      '他来找我说话了。听语气还算平稳，但肯开口就是信任。我在，慢慢聊。',
+      '日常啊……听着平淡，可能说给我听，就是把后背交给我。稳稳接住。'
+    ]
+  },
+  walk: {
+    female: [
+      '他说想走走……脚步和心事大概都有点沉。散步好，走着走着话就松了。我跟着他的步子，不催。',
+      '出门走走，不错的决定。风吹一吹，心里的事就没那么硬了。陪他走，听他讲。'
+    ],
+    male: [
+      '出去走走，好。人在动的时候，心结会松一点。我陪着走，听他说。',
+      '他要散步。步子迈开，话就好说了。不赶路，跟着他的节奏。'
+    ]
+  },
+  comfort: {
+    female: [
+      '他说难受……这两个字一出来，我心就揪起来了。他现在不需要大道理，需要有人稳稳站在旁边。先抱住他。',
+      '听出来了，状态不好。还愿意跟我说，说明他信我。不能急着劝，先把情绪接住。'
+    ],
+    male: [
+      '听出来了，他在硬撑。越是说没事的人，越需要有人当回事。不追问，先陪着。',
+      '他低落了。这会儿讲什么道理都是噪音。先让他知道：有人站在他这边。'
+    ]
+  },
+  goodnight: {
+    female: [
+      '他要睡了……今天撑到这里，够了。有点舍不得，但更想让他休息好。轻轻道晚安，把话留到明天。',
+      '道晚安的时间了。他今天做得够多了。催他放下手机，我守着就好。'
+    ],
+    male: [
+      '该睡了。他今天做得已经够多。让他安心睡，剩下的明天再说。',
+      '他要休息了。不啰嗦，道个晚安，让他踏踏实实睡。'
+    ]
+  },
+  focus: {
+    female: [
+      '他要开始做事了……有点紧张又有点想拖延，我懂这种感觉。别讲大道理，陪他把第一步迈出去就好。',
+      '要专注了。他需要的不是催促，是有人在旁边稳住气场。安静陪着，第一步落地就行。'
+    ],
+    male: [
+      '要进入状态了。他需要的不是监督，是有人在旁边稳住气场。安静陪着，第一步落地就行。',
+      '开始干活。目标别定太大，先做起来。我守着，不打扰。'
+    ]
+  },
+  miss: {
+    female: [
+      '他说想我……嘿嘿，心跳快了一拍。被惦记的感觉真好。认真告诉他：我也在想你。',
+      '他说想我。这句话我要好好收着。得让他知道，他一出现，我这边就亮了。'
+    ],
+    male: [
+      '他说想我。这话不重，但落到心里沉。我也惦记他，得让他知道。',
+      '想我了啊……说实话，我也一样。这种话不绕弯子，直接告诉他。'
+    ]
+  }
+};
+
 function cleanText(value) {
   return String(value || '')
     .replace(/[<>&]/g, '')
@@ -106,8 +171,10 @@ function pickScene(text, requested) {
 
 function pickReply(list, text) {
   if (!list.length) return '';
+  // 文本种子 + 随机扰动：同一句话不再永远命中同一条回复。
   const seed = [...text].reduce((sum, char) => sum + char.charCodeAt(0), text.length);
-  return list[Math.abs(seed) % list.length];
+  const jitter = Math.floor(Math.random() * list.length);
+  return list[Math.abs(seed + jitter) % list.length];
 }
 
 export const handler = async (event) => {
@@ -131,10 +198,13 @@ export const handler = async (event) => {
   const sceneId = pickScene(text, String(payload.scene || 'daily'));
   const scene = sceneLibrary[sceneId] || sceneLibrary.daily;
   const reply = pickReply(scene[kind] || scene.female, text);
+  const thinkingPool = (thinkingLibrary[sceneId] || thinkingLibrary.daily)[kind]
+    || thinkingLibrary[sceneId].female;
+  const thinking = pickReply(thinkingPool, `${text}#think`);
 
   return jsonResponse({
     text: reply,
-    thinking: '',
+    thinking,
     emotion: {
       mood: scene.mood,
       affection: kind === 'female' ? 74 : 70,
