@@ -100,7 +100,7 @@ if (wallpaperEl && params.get('scene') === 'room') wallpaperEl.classList.add('bg
 if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('bg-night');
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 
-const modelAssetVersion = 'v0.2.14-optimized-assets-1';
+const modelAssetVersion = 'v0.2.15-hand-motion-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -120,8 +120,8 @@ const modelAssets = {
   }
 };
 
-const runtimeModelActions = new Set([]);
-const loopingModelActions = new Set([]);
+const runtimeModelActions = new Set(['walk', 'run']);
+const loopingModelActions = new Set(['walk', 'run']);
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('./vendor/');
@@ -488,6 +488,7 @@ scene.add(rimLight);
 const avatar = new THREE.Group();
 const modelLayer = new THREE.Group();
 const cosmeticLayer = new THREE.Group();
+const modelHandLayer = new THREE.Group();
 const body = new THREE.Group();
 const head = new THREE.Group();
 const leftArm = new THREE.Group();
@@ -503,6 +504,8 @@ scene.add(avatar);
 scene.add(modelLayer);
 modelLayer.visible = false;
 cosmeticLayer.name = 'qiban-cosmetics';
+modelHandLayer.name = 'qiban-five-finger-overlays';
+modelHandLayer.visible = false;
 avatar.visible = false;
 avatar.add(body);
 body.add(head, leftArm, rightArm, leftLeg, rightLeg);
@@ -517,6 +520,7 @@ Object.assign(rig, {
 });
 modelState.layer = modelLayer;
 modelState.cosmeticLayer = cosmeticLayer;
+modelState.handLayer = modelHandLayer;
 
 function outlinedMesh(geometry, material, outlineScale = 1.035) {
   const wrapper = new THREE.Group();
@@ -624,6 +628,7 @@ function buildCharacter() {
   buildAccessories();
   buildHeart();
   buildModelCosmetics();
+  buildModelHandOverlays();
 }
 
 function buildBody() {
@@ -1001,6 +1006,165 @@ function buildModelCosmetics() {
   updateCosmeticLayer();
 }
 
+function makeHandOverlayMaterial(color, opacity = 0.98) {
+  return new THREE.MeshToonMaterial({
+    color,
+    transparent: true,
+    opacity
+  });
+}
+
+function addFingerPart(parent, geometry, material, options = {}) {
+  const part = addPart(parent, geometry, material, {
+    ...options,
+    outlineScale: options.outlineScale || 1.07
+  });
+  part.traverse((child) => {
+    child.renderOrder = 4;
+  });
+  return part;
+}
+
+function buildOneModelHandOverlay(side) {
+  const sign = side === 'Left' ? -1 : 1;
+  const group = new THREE.Group();
+  const pose = new THREE.Group();
+  group.name = `${side.toLowerCase()}-five-finger-hand`;
+  pose.name = `${side.toLowerCase()}-five-finger-pose`;
+  group.add(pose);
+
+  const skinMaterial = makeHandOverlayMaterial(0xffdccd, 0.98);
+  const gloveMaterial = makeHandOverlayMaterial(0x101013, 0.99);
+  const nailMaterial = new THREE.MeshBasicMaterial({ color: 0xfffbf3, transparent: true, opacity: 0.9 });
+  const palm = addFingerPart(pose, new THREE.SphereGeometry(0.041, 20, 14), gloveMaterial, {
+    position: [sign * 0.001, -0.026, 0.011],
+    scale: [1.34, 1.06, 0.82],
+    outlineScale: 1.025
+  });
+  const wrist = addFingerPart(pose, capsule(0.022, 0.05, 5, 14), gloveMaterial, {
+    position: [0, 0.016, 0.006],
+    rotation: [0.1, 0, sign * 0.08],
+    scale: [1.12, 0.86, 0.94],
+    outlineScale: 1.02
+  });
+
+  const fingerSpecs = [
+    { name: 'thumb', x: sign * 0.043, y: -0.027, z: 0.019, length: 0.034, radius: 0.0084, rz: -sign * 0.68, rx: 0.16 },
+    { name: 'index', x: sign * 0.025, y: -0.061, z: 0.022, length: 0.048, radius: 0.0074, rz: sign * 0.08, rx: 0.02 },
+    { name: 'middle', x: sign * 0.009, y: -0.067, z: 0.023, length: 0.055, radius: 0.0078, rz: 0, rx: 0.018 },
+    { name: 'ring', x: -sign * 0.008, y: -0.064, z: 0.022, length: 0.049, radius: 0.0071, rz: -sign * 0.055, rx: 0.022 },
+    { name: 'pinky', x: -sign * 0.024, y: -0.057, z: 0.02, length: 0.039, radius: 0.0063, rz: -sign * 0.13, rx: 0.03 }
+  ];
+
+  const fingers = fingerSpecs.map((spec) => {
+    const finger = addFingerPart(pose, capsule(spec.radius, spec.length, 5, 14), skinMaterial, {
+      position: [spec.x, spec.y, spec.z],
+      rotation: [spec.rx, 0, spec.rz],
+      outlineScale: 1.08
+    });
+    const tip = addPlain(finger, new THREE.SphereGeometry(spec.radius * 0.9, 10, 8), nailMaterial, {
+      position: [0, -spec.length * 0.58, spec.radius * 0.6],
+      scale: [0.78, 0.34, 0.42]
+    });
+    tip.renderOrder = 5;
+    finger.userData.baseRotation = finger.rotation.clone();
+    finger.userData.basePosition = finger.position.clone();
+    finger.userData.name = spec.name;
+    return finger;
+  });
+
+  pose.position.set(sign * 0.002, -0.018, 0.018);
+  pose.rotation.set(0.12, sign * 0.08, sign * 0.08);
+  group.userData.pose = pose;
+  group.userData.palm = palm;
+  group.userData.wrist = wrist;
+  group.userData.fingers = fingers;
+  group.userData.skinMaterial = skinMaterial;
+  group.userData.gloveMaterial = gloveMaterial;
+  group.userData.nailMaterial = nailMaterial;
+  modelHandLayer.add(group);
+  return group;
+}
+
+function buildModelHandOverlays() {
+  modelHandLayer.clear();
+  rig.modelHands = {
+    Left: buildOneModelHandOverlay('Left'),
+    Right: buildOneModelHandOverlay('Right')
+  };
+}
+
+function modelHasFingerBones(entry) {
+  return Object.keys(entry.bones || {}).some((name) => (
+    /(finger|thumb|index|middle|ring|pinky|little)/i.test(name)
+  ));
+}
+
+const handWorldPosition = new THREE.Vector3();
+const handLocalPosition = new THREE.Vector3();
+const handWorldQuaternion = new THREE.Quaternion();
+const modelWorldQuaternion = new THREE.Quaternion();
+const handLocalQuaternion = new THREE.Quaternion();
+
+function updateModelHandOverlayMaterials() {
+  if (!rig.modelHands) return;
+  const persona = personas[state.activePersona];
+  const skin = currentSkin();
+  const base = new THREE.Color(0xffdccd).lerp(new THREE.Color(skin.tint), Math.min(0.22, skin.tintStrength * 0.5));
+  Object.values(rig.modelHands).forEach((hand) => {
+    if (hand.userData.skinMaterial?.color) hand.userData.skinMaterial.color.copy(base);
+    if (hand.userData.gloveMaterial?.color) hand.userData.gloveMaterial.color.setHex(persona.inner);
+    if (hand.userData.nailMaterial?.color) hand.userData.nailMaterial.color.setHex(0xfff7f2);
+  });
+}
+
+function syncOneModelHandOverlay(entry, side, t) {
+  const hand = rig.modelHands && rig.modelHands[side];
+  const bone = entry.bones[`${side}Hand`];
+  if (!hand || !bone) return;
+  const sign = side === 'Left' ? -1 : 1;
+  bone.getWorldPosition(handWorldPosition);
+  bone.getWorldQuaternion(handWorldQuaternion);
+  modelLayer.getWorldQuaternion(modelWorldQuaternion);
+  handLocalPosition.copy(handWorldPosition);
+  modelLayer.worldToLocal(handLocalPosition);
+  hand.position.copy(handLocalPosition);
+  handLocalQuaternion.copy(modelWorldQuaternion).invert().multiply(handWorldQuaternion);
+  hand.quaternion.copy(handLocalQuaternion);
+  hand.userData.pose.position.set(sign * 0.002, -0.018, 0.018);
+  hand.userData.pose.rotation.set(0.12, sign * 0.08, sign * 0.08);
+
+  const flex = state.action === 'heart'
+    ? 0.24
+    : state.action === 'voice'
+      ? 0.16 + Math.sin(t * 4.2) * 0.05
+      : state.action === 'walk' || state.action === 'run'
+        ? 0.12 + Math.sin(t * (state.action === 'run' ? 7.8 : 4.8)) * 0.035
+        : 0.08 + Math.sin(t * 1.7 + sign) * 0.025;
+
+  hand.userData.fingers.forEach((finger, index) => {
+    finger.position.copy(finger.userData.basePosition);
+    finger.rotation.copy(finger.userData.baseRotation);
+    const spread = (index - 2) * 0.01;
+    finger.rotation.x += flex * (index === 0 ? 0.35 : 1);
+    finger.rotation.z += sign * spread + Math.sin(t * 1.2 + index) * 0.006;
+  });
+}
+
+function updateModelHandOverlays(t) {
+  const entry = modelState.active;
+  if (!entry || !rig.modelHands) {
+    modelHandLayer.visible = false;
+    return;
+  }
+  const shouldShow = !entry.hasFingerBones;
+  modelHandLayer.visible = shouldShow;
+  if (!shouldShow) return;
+  modelLayer.updateMatrixWorld(true);
+  syncOneModelHandOverlay(entry, 'Left', t);
+  syncOneModelHandOverlay(entry, 'Right', t);
+}
+
 function easeOutCubic(x) {
   return 1 - Math.pow(1 - x, 3);
 }
@@ -1037,6 +1201,7 @@ function setPersona(id) {
   fillLight.color.setHex(id === 'female' ? 0xffa4ba : 0x9cc8ff);
   setVisible(rig.femaleOnly, id === 'female');
   setVisible(rig.maleOnly, id === 'male');
+  updateModelHandOverlayMaterials();
   rig.sideLockLeft.visible = id === 'female';
   rig.sideLockRight.visible = id === 'female';
   rig.backHairLong.visible = id === 'female';
@@ -1427,8 +1592,10 @@ function activateLoadedModel(id) {
     modelLayer.clear();
     modelLayer.add(entry.root);
     modelLayer.add(cosmeticLayer);
+    modelLayer.add(modelHandLayer);
   }
   applyModelSkin(entry);
+  updateModelHandOverlayMaterials();
   updateCosmeticLayer();
   modelLayer.visible = true;
   avatar.visible = false;
@@ -1455,8 +1622,10 @@ function loadModel(id) {
       actions: {},
       mixer: new THREE.AnimationMixer(root),
       activeAnimation: '',
-      activeAction: null
+      activeAction: null,
+      hasFingerBones: false
     };
+    entry.hasFingerBones = modelHasFingerBones(entry);
     modelState.loaded[id] = entry;
     modelState.loading[id] = false;
     if (state.activePersona === id) {
@@ -1875,6 +2044,29 @@ function applyModelFrameScale(multiplier, yOffset = 0) {
   modelLayer.position.y = modelState.baseY - 1.65 * (modelState.baseScale - nextScale) + yOffset;
 }
 
+function applyRuntimeLocomotionLayer(entry, elapsed, isRun, profile, duration) {
+  const fade = modelActionFade(elapsed, duration, 0.18);
+  const cadence = (isRun ? 7.4 : 4.35) * profile.speed;
+  const phase = elapsed * cadence;
+  const stride = Math.sin(phase);
+  const landing = (1 - Math.cos(phase * 2)) * 0.5;
+  const lateral = Math.cos(phase) * fade;
+  const lean = (isRun ? 0.11 : 0.045) * fade;
+
+  applyModelFrameScale(1, landing * (isRun ? 0.018 : 0.008) * fade);
+  modelLayer.position.x += lateral * (isRun ? 0.018 : 0.01);
+  modelLayer.rotation.x += -lean * 0.32;
+  modelLayer.rotation.y += stride * (isRun ? 0.026 : 0.014) * fade;
+  modelLayer.rotation.z += -lateral * (isRun ? 0.012 : 0.008);
+
+  addBoneRotation(entry, 'Spine', lean * 0.18, 0, lateral * 0.018);
+  addBoneRotation(entry, 'Spine01', lean * 0.12, 0, lateral * 0.012);
+  addBoneRotation(entry, 'neck', -lean * 0.1, -lateral * 0.006, 0);
+  addBoneRotation(entry, 'Head', lean * 0.16 - landing * 0.01 * fade, -lateral * 0.012, -lateral * 0.012);
+  addBoneRotation(entry, 'LeftHand', 0, 0, -stride * 0.035 * fade);
+  addBoneRotation(entry, 'RightHand', 0, 0, -stride * 0.035 * fade);
+}
+
 function updateModelPose(t, delta = 0) {
   const entry = modelState.active;
   if (!entry) return;
@@ -1889,6 +2081,20 @@ function updateModelPose(t, delta = 0) {
   modelLayer.rotation.x = 0;
   modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04 + Math.sin(t * 0.32) * 0.008 * profile.gaze;
   modelLayer.rotation.z = sway * 0.08;
+
+  if (runtimeModelActions.has(state.action)) {
+    ensureModelAnimations(state.activePersona, [state.action]);
+  }
+
+  if ((state.action === 'walk' || state.action === 'run') && entry.actions[state.action]) {
+    const isRun = state.action === 'run';
+    const duration = (isRun ? 5.4 : 6.2) / profile.action;
+    playModelAnimation(entry, state.action);
+    entry.mixer.update(delta * profile.action);
+    applyRuntimeLocomotionLayer(entry, elapsed, isRun, profile, duration);
+    finishActionIfNeeded(elapsed, duration);
+    return;
+  }
 
   resetModelForProceduralPose(entry);
   const actionOwnsArms = state.action === 'heart' || state.action === 'voice';
@@ -2141,6 +2347,7 @@ function animate(time) {
   updateBasePose(t);
   if (!modelState.active) updateActionPose(t);
   updateModelPose(t, delta);
+  updateModelHandOverlays(t);
 
   if (state.action !== 'turn' && !modelState.active) {
     const viewYaw = state.dragYaw + state.pointerX * 0.04;
