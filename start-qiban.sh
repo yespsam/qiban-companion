@@ -111,7 +111,7 @@ STATIC_PID="$!"
 wait_for_http "http://$HOST:$STATIC_PORT/"
 
 API_URL="http://$HOST:$API_PORT"
-WALLPAPER_URL="http://$HOST:$STATIC_PORT/?dialog=$DIALOG&voice=$VOICE&persona=$PERSONA&api=$API_URL"
+WALLPAPER_URL="http://$HOST:$STATIC_PORT/?dialog=$DIALOG&voice=$VOICE&persona=$PERSONA&mobile=1&play=daily&api=$API_URL"
 
 echo "人物入口: $WALLPAPER_URL"
 echo "API 服务: $API_URL"

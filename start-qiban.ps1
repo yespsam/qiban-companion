@@ -121,7 +121,7 @@ try {
   Wait-Http "http://$BindHost`:$StaticPort/"
 
   $apiUrl = "http://$BindHost`:$ApiPort"
-  $wallpaperUrl = "http://$BindHost`:$StaticPort/?dialog=$Dialog&voice=$Voice&persona=$Persona&api=$apiUrl"
+  $wallpaperUrl = "http://$BindHost`:$StaticPort/?dialog=$Dialog&voice=$Voice&persona=$Persona&mobile=1&play=daily&api=$apiUrl"
 
   Write-Host "人物入口: $wallpaperUrl"
   Write-Host "API 服务: $apiUrl"

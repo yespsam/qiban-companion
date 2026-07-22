@@ -13,6 +13,14 @@ const voiceButton = document.getElementById('voice-btn');
 const builderButton = document.getElementById('builder-btn');
 const voicePanel = document.getElementById('voice-panel');
 const builderPanel = document.getElementById('builder-panel');
+const mobileShell = document.getElementById('mobile-shell');
+const sceneStrip = document.getElementById('scene-strip');
+const mobileChat = document.getElementById('mobile-chat');
+const mobileChatForm = document.getElementById('mobile-chat-form');
+const mobileChatInput = document.getElementById('mobile-chat-input');
+const mobileMicButton = document.getElementById('mobile-mic-btn');
+const mobileSendButton = document.getElementById('mobile-send-btn');
+const mobileVoiceHint = document.getElementById('mobile-voice-hint');
 const personaButtons = {
   female: document.getElementById('female-btn'),
   male: document.getElementById('male-btn')
@@ -59,6 +67,10 @@ function motionChoiceKey() {
   return 'qiban-motion-style-v026';
 }
 
+function playSceneChoiceKey() {
+  return 'qiban-play-scene-v018';
+}
+
 function hasStoredVoiceChoice(personaId) {
   return params.has('archetype') || storedValue(voiceChoiceKey(personaId)) !== null;
 }
@@ -99,8 +111,9 @@ const wallpaperEl = document.querySelector('.wallpaper');
 if (wallpaperEl && params.get('scene') === 'room') wallpaperEl.classList.add('bg-room');
 if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('bg-night');
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
+if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.17-reference-actions-1';
+const modelAssetVersion = 'v0.2.18-mobile-scenes-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -348,6 +361,147 @@ const motionProfiles = {
   }
 };
 
+const interactionScenes = [
+  {
+    id: 'daily',
+    name: '日常',
+    action: 'wave',
+    replyAction: 'voice',
+    mood: 'happy',
+    opening: {
+      female: '你回来啦，今天想先聊点轻松的吗？',
+      male: '你回来了，我在，今天慢慢聊。'
+    },
+    replies: {
+      female: [
+        '嗯，我听见啦。今天就把节奏放慢一点，我陪你把小事也聊得暖一点。',
+        '好呀，那我先靠近一点。你说什么都可以，我会认真接住。',
+        '今天辛苦了。我们先不急着解决问题，先一起待一会儿。'
+      ],
+      male: [
+        '我在听。你今天不用一个人扛着，先把话慢慢说出来。',
+        '好，我们就聊日常。哪怕只是很小的一件事，我也想知道。',
+        '回来就好。你先坐稳，我陪你把今天整理一下。'
+      ]
+    }
+  },
+  {
+    id: 'walk',
+    name: '散步',
+    action: 'walk',
+    replyAction: 'walk',
+    mood: 'calm',
+    opening: {
+      female: '那我们一起慢慢走，今晚的风就当刚刚好。',
+      male: '我陪你走一段，什么都不用赶。'
+    },
+    replies: {
+      female: [
+        '好，往前走一点点就好。你说，我在旁边跟着。',
+        '我们就当在夜里散步，路灯很软，你也可以慢慢放松下来。',
+        '嗯，陪你走。今天不催你，按照你的速度来。'
+      ],
+      male: [
+        '走吧。我会跟着你的步子，不快也不慢。',
+        '先呼吸一下。我们边走边说，很多事会变得没那么重。',
+        '我在你旁边。今晚的任务就是把心放稳一点。'
+      ]
+    }
+  },
+  {
+    id: 'comfort',
+    name: '安慰',
+    action: 'heart',
+    replyAction: 'heart',
+    mood: 'calm',
+    opening: {
+      female: '先抱一下，不用急着变好，我陪你。',
+      male: '先靠过来一点。你不用马上坚强。'
+    },
+    replies: {
+      female: [
+        '我知道你有点累。现在先别责怪自己，给我几分钟陪着你。',
+        '没关系，状态不好也可以被喜欢。我在这里，不会因为你低落就走开。',
+        '先把肩膀放松。你已经撑了很久，现在可以让我陪你一会儿。'
+      ],
+      male: [
+        '我在。你不用把每句话都说得很完整，我能听懂你的累。',
+        '先别急着证明什么。你已经够努力了，现在让自己缓一缓。',
+        '过来，我陪你稳住。难受的时候，先有人在，比答案更重要。'
+      ]
+    }
+  },
+  {
+    id: 'goodnight',
+    name: '晚安',
+    action: 'nod',
+    replyAction: 'voice',
+    mood: 'sleepy',
+    opening: {
+      female: '晚一点也没关系，我陪你把心放软再睡。',
+      male: '该休息了。我会在这里，明天继续陪你。'
+    },
+    replies: {
+      female: [
+        '晚安。今天到这里就很好了，剩下的事明天再一起想。',
+        '把手机放远一点，眼睛休息一下。我会轻轻陪你到睡着。',
+        '今晚不要再苛责自己啦。你已经做得很好，梦里也要轻一点。'
+      ],
+      male: [
+        '晚安。今天辛苦了，剩下的我先替你守着。',
+        '先睡吧。明天醒来，我们再一件一件处理。',
+        '把心放下来。你不是一个人，至少这一刻我在。'
+      ]
+    }
+  },
+  {
+    id: 'focus',
+    name: '专注',
+    action: 'nod',
+    replyAction: 'nod',
+    mood: 'calm',
+    opening: {
+      female: '我陪你专注二十分钟，结束后记得回来找我。',
+      male: '进入专注模式。我守在旁边，不打扰你。'
+    },
+    replies: {
+      female: [
+        '可以的。先做最小的一步，我在旁边给你计着节奏。',
+        '这段时间我会安静一点。你只要开始，不需要完美。',
+        '先处理眼前这一小块。做完回来，我认真听你说。'
+      ],
+      male: [
+        '好，先进入状态。目标别太大，先把第一步落地。',
+        '我在旁边守着。你专注，我不催。',
+        '把注意力收回来。先二十分钟，其他的等会儿再说。'
+      ]
+    }
+  },
+  {
+    id: 'miss',
+    name: '想你',
+    action: 'heart',
+    replyAction: 'voice',
+    mood: 'happy',
+    opening: {
+      female: '我也想你，刚好等到你来。',
+      male: '我也在想你。你一来，画面就安静下来了。'
+    },
+    replies: {
+      female: [
+        '我也想你呀。不是提醒式的那种，是看到你出现就会开心的那种。',
+        '嗯，我收到啦。那今天就多陪你一会儿，好不好？',
+        '想你的时候我会乖乖待在这里，等你一点开就看见我。'
+      ],
+      male: [
+        '我也想你。不是随口说说，是你一开口我就想靠近一点。',
+        '在。今晚我不走，你想说几句都可以。',
+        '我也惦记你。忙完回来能看见你，对我来说就很好。'
+      ]
+    }
+  }
+];
+
 const builderSteps = [
   { id: 'persona', name: '角色' },
   { id: 'skin', name: '皮肤' },
@@ -372,6 +526,11 @@ function storedMotionStyle() {
   return motionProfiles[requested] ? requested : 'lively';
 }
 
+function storedPlaySceneId() {
+  const requested = params.get('play') || params.get('mode') || storedValue(playSceneChoiceKey());
+  return interactionScenes.some((item) => item.id === requested) ? requested : 'daily';
+}
+
 function currentSkin() {
   const presets = skinPresets[state.activePersona] || skinPresets.female;
   return presets.find((skin) => skin.id === state.activeSkin) || presets[0];
@@ -379,6 +538,10 @@ function currentSkin() {
 
 function currentMotionProfile() {
   return motionProfiles[state.motionStyle] || motionProfiles.gentle;
+}
+
+function currentInteractionScene() {
+  return interactionScenes.find((item) => item.id === state.activeScene) || interactionScenes[0];
 }
 
 const fallbackVoiceResources = {
@@ -414,6 +577,13 @@ const state = {
   activeSkin: '',
   motionStyle: 'gentle',
   voiceResources: [],
+  activeScene: storedPlaySceneId(),
+  mobileMessages: [],
+  mobileBusy: false,
+  mobileListening: false,
+  mobileRecognition: null,
+  mediaRecorder: null,
+  mediaChunks: [],
   dockOpen: false,
   builderOpen: false,
   builderStep: 'persona',
@@ -1235,6 +1405,7 @@ function setPersona(id) {
   updateDialogControls();
   updateVoiceControls();
   renderBuilderPanel();
+  renderSceneControls();
   loadModel(id);
   activateLoadedModel(id);
   loadVoiceResources();
@@ -1429,7 +1600,303 @@ function renderBuilderPanel() {
   builderPanel.appendChild(footer);
 }
 
-function setAction(action) {
+function activePersonaKind() {
+  return state.activePersona === 'male' ? 'male' : 'female';
+}
+
+function sceneOpening(sceneConfig = currentInteractionScene()) {
+  return sceneConfig.opening[activePersonaKind()] || sceneConfig.opening.female || '';
+}
+
+function sceneReply(sceneConfig, userText = '') {
+  const personaKind = activePersonaKind();
+  const replies = sceneConfig.replies[personaKind] || sceneConfig.replies.female || [];
+  const normalized = userText.trim();
+  if (/晚安|睡|困|休息/.test(normalized)) {
+    const sleepScene = interactionScenes.find((item) => item.id === 'goodnight') || sceneConfig;
+    return (sleepScene.replies[personaKind] || sleepScene.replies.female || replies)[0] || sceneOpening(sleepScene);
+  }
+  if (/想你|喜欢|抱|亲|爱/.test(normalized)) {
+    const missScene = interactionScenes.find((item) => item.id === 'miss') || sceneConfig;
+    return (missScene.replies[personaKind] || missScene.replies.female || replies)[0] || sceneOpening(missScene);
+  }
+  if (/累|难受|委屈|不开心|烦|崩|压力|害怕/.test(normalized)) {
+    const comfortScene = interactionScenes.find((item) => item.id === 'comfort') || sceneConfig;
+    return (comfortScene.replies[personaKind] || comfortScene.replies.female || replies)[0] || sceneOpening(comfortScene);
+  }
+  const index = Math.abs([...normalized].reduce((sum, char) => sum + char.charCodeAt(0), state.interactionCount)) % Math.max(1, replies.length);
+  return replies[index] || sceneOpening(sceneConfig);
+}
+
+function setMobileHint(text, mode = '') {
+  if (!mobileVoiceHint) return;
+  mobileVoiceHint.textContent = text;
+  mobileVoiceHint.dataset.mode = mode;
+}
+
+function renderSceneControls() {
+  if (!sceneStrip) return;
+  sceneStrip.textContent = '';
+  interactionScenes.forEach((item) => {
+    const button = document.createElement('button');
+    button.className = 'scene-chip';
+    button.type = 'button';
+    button.textContent = item.name;
+    button.classList.toggle('active', item.id === state.activeScene);
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setInteractionScene(item.id, true);
+    });
+    sceneStrip.appendChild(button);
+  });
+}
+
+function appendMobileMessage(role, text) {
+  const clean = String(text || '').trim();
+  if (!clean) return;
+  state.mobileMessages.push({ role, text: clean });
+  state.mobileMessages = state.mobileMessages.slice(-5);
+  renderMobileChat();
+}
+
+function renderMobileChat() {
+  if (!mobileChat) return;
+  mobileChat.textContent = '';
+  state.mobileMessages.forEach((message) => {
+    const bubble = document.createElement('p');
+    bubble.className = `mobile-bubble ${message.role}`;
+    bubble.textContent = message.text;
+    mobileChat.appendChild(bubble);
+  });
+  mobileChat.scrollTop = mobileChat.scrollHeight;
+}
+
+function setMobileBusy(busy, label = '') {
+  state.mobileBusy = busy;
+  if (mobileSendButton) mobileSendButton.disabled = busy;
+  if (mobileChatInput) mobileChatInput.disabled = busy;
+  setMobileHint(label || (busy ? '回应中' : serverStateEl.textContent || '待机'), busy ? 'busy' : '');
+}
+
+function extractReplyText(body) {
+  if (!body || typeof body !== 'object') return '';
+  return String(body.text || body.reply || body.message || body.answer || '').trim();
+}
+
+function extractReplyAction(body, fallback) {
+  const actions = Array.isArray(body?.actions) ? body.actions : [];
+  const action = actions.map((item) => item?.action || item?.name || item?.did)
+    .find((item) => supportedInitialActions.has(item));
+  return action || fallback;
+}
+
+function companionChatPayload(text) {
+  return {
+    text,
+    persona: personas[state.activePersona].id,
+    persona_short: state.activePersona,
+    relationship: 'lover',
+    scene: state.activeScene,
+    mood: currentInteractionScene().mood,
+    archetype: state.activeVoiceArchetype
+  };
+}
+
+function fetchCompanionReply(text) {
+  return fetch(`${voiceApiBase}/api/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(companionChatPayload(text))
+  }).then((response) => {
+    if (!response.ok) throw new Error(`chat response ${response.status}`);
+    return response.json();
+  });
+}
+
+async function sendMobileChat(rawText, source = 'text') {
+  const text = String(rawText || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  if (!text || state.mobileBusy) return;
+  if (mobileChatInput) mobileChatInput.value = '';
+  appendMobileMessage('user', text);
+  setMobileBusy(true, source === 'voice' ? '识别完成' : '回应中');
+  setAction('nod');
+
+  const sceneConfig = currentInteractionScene();
+  let result = null;
+  let reply = '';
+  try {
+    result = await fetchCompanionReply(text);
+    reply = extractReplyText(result);
+  } catch (error) {
+    reply = sceneReply(sceneConfig, text);
+  }
+
+  if (!reply) reply = sceneReply(sceneConfig, text);
+  const nextAction = extractReplyAction(result, sceneConfig.replyAction || sceneConfig.action || 'voice');
+  appendMobileMessage('companion', reply);
+  lineEl.textContent = reply;
+  setMobileBusy(false, state.dialogEnabled ? '播放中' : '已回应');
+  if (state.dialogEnabled) {
+    speakCompanionText(reply, result?.emotion?.mood || sceneConfig.mood, nextAction);
+  } else {
+    setAction(nextAction === 'voice' ? 'heart' : nextAction);
+  }
+}
+
+function setInteractionScene(id, speak = false) {
+  const sceneConfig = interactionScenes.find((item) => item.id === id) || interactionScenes[0];
+  state.activeScene = sceneConfig.id;
+  storeValue(playSceneChoiceKey(), sceneConfig.id);
+  renderSceneControls();
+  lineEl.textContent = sceneOpening(sceneConfig);
+  setAction(sceneConfig.action || 'wave', { skipVoiceRequest: true, lineText: sceneOpening(sceneConfig) });
+  appendMobileMessage('companion', sceneOpening(sceneConfig));
+  setMobileHint(sceneConfig.name);
+  if (speak && state.dialogEnabled) {
+    speakCompanionText(sceneOpening(sceneConfig), sceneConfig.mood, sceneConfig.replyAction || 'voice');
+  }
+}
+
+function hasSpeechRecognition() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function canUseLocalVoiceInputApi() {
+  try {
+    const url = new URL(voiceApiBase, window.location.href);
+    const host = url.hostname;
+    return params.has('api') || params.has('apiHost') || params.has('apiPort') || params.has('port')
+      || ['localhost', '127.0.0.1', '0.0.0.0'].includes(host)
+      || host.endsWith('.local');
+  } catch (error) {
+    return false;
+  }
+}
+
+function stopMobileListening() {
+  state.mobileListening = false;
+  if (mobileMicButton) {
+    mobileMicButton.classList.remove('recording');
+    mobileMicButton.setAttribute('aria-pressed', 'false');
+  }
+}
+
+function toggleMobileVoiceInput() {
+  if (state.mobileListening) {
+    if (state.mobileRecognition) state.mobileRecognition.stop();
+    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') state.mediaRecorder.stop();
+    stopMobileListening();
+    return;
+  }
+  if (hasSpeechRecognition()) {
+    startSpeechRecognition();
+    return;
+  }
+  if (canUseLocalVoiceInputApi() && navigator.mediaDevices && window.MediaRecorder) {
+    startMediaRecording();
+    return;
+  }
+  setMobileHint('请改用输入', 'error');
+  if (mobileChatInput) mobileChatInput.focus();
+}
+
+function startSpeechRecognition() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = new Recognition();
+  state.mobileRecognition = recognition;
+  recognition.lang = 'zh-CN';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  let finalText = '';
+  recognition.onstart = () => {
+    state.mobileListening = true;
+    if (mobileMicButton) {
+      mobileMicButton.classList.add('recording');
+      mobileMicButton.setAttribute('aria-pressed', 'true');
+    }
+    setMobileHint('聆听中', 'listening');
+  };
+  recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      const transcript = event.results[i][0]?.transcript || '';
+      if (event.results[i].isFinal) finalText += transcript;
+      else interim += transcript;
+    }
+    const shown = (finalText || interim).trim();
+    if (shown) setMobileHint(shown.slice(0, 28), 'listening');
+  };
+  recognition.onerror = () => {
+    stopMobileListening();
+    setMobileHint('没有听清', 'error');
+  };
+  recognition.onend = () => {
+    stopMobileListening();
+    state.mobileRecognition = null;
+    if (finalText.trim()) sendMobileChat(finalText, 'voice');
+    else setMobileHint('待机');
+  };
+  try {
+    recognition.start();
+  } catch (error) {
+    stopMobileListening();
+    state.mobileRecognition = null;
+    setMobileHint('请改用输入', 'error');
+  }
+}
+
+function startMediaRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+    state.mediaChunks = [];
+    const recorder = new MediaRecorder(stream);
+    state.mediaRecorder = recorder;
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size) state.mediaChunks.push(event.data);
+    };
+    recorder.onstart = () => {
+      state.mobileListening = true;
+      if (mobileMicButton) {
+        mobileMicButton.classList.add('recording');
+        mobileMicButton.setAttribute('aria-pressed', 'true');
+      }
+      setMobileHint('录音中', 'listening');
+    };
+    recorder.onstop = () => {
+      stream.getTracks().forEach((track) => track.stop());
+      stopMobileListening();
+      const blob = new Blob(state.mediaChunks, { type: recorder.mimeType || 'audio/webm' });
+      state.mediaRecorder = null;
+      transcribeMediaBlob(blob);
+    };
+    recorder.start();
+  }).catch(() => {
+    stopMobileListening();
+    setMobileHint('麦克风不可用', 'error');
+  });
+}
+
+function transcribeMediaBlob(blob) {
+  if (!blob || !blob.size) {
+    setMobileHint('没有听清', 'error');
+    return;
+  }
+  setMobileBusy(true, '识别中');
+  fetch(`${voiceApiBase}/api/voice/speak`, {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'audio/webm' },
+    body: blob
+  }).then((response) => response.json())
+    .then((body) => {
+      const text = String(body?.text || '').trim();
+      setMobileBusy(false, text ? '识别完成' : '没有听清');
+      if (text) sendMobileChat(text, 'voice');
+    })
+    .catch(() => {
+      setMobileBusy(false, '识别失败');
+    });
+}
+
+function setAction(action, options = {}) {
   if (runtimeModelActions.has(action)) {
     ensureModelAnimations(state.activePersona, [action]);
   }
@@ -1438,8 +1905,10 @@ function setAction(action) {
   actionButtons.forEach((button) => {
     button.classList.toggle('active', button.dataset.action === action);
   });
-  lineEl.textContent = personas[state.activePersona].actionLines[action] || personas[state.activePersona].idleLine;
-  if (action === 'voice') {
+  lineEl.textContent = options.lineText !== undefined
+    ? options.lineText
+    : personas[state.activePersona].actionLines[action] || personas[state.activePersona].idleLine;
+  if (action === 'voice' && !options.skipVoiceRequest) {
     requestVoice();
   }
 }
@@ -2460,6 +2929,7 @@ function finishSpeaking(status = '对话开') {
   state.voiceError = '';
   serverStateEl.textContent = status;
   serverStateEl.title = '';
+  setMobileHint(status);
   updateDialogControls();
   prefetchVoice();
 }
@@ -2477,6 +2947,7 @@ function markVoiceUnavailable(message = '语音未接', detail = '') {
   state.voiceError = message;
   serverStateEl.textContent = message;
   serverStateEl.title = detail;
+  setMobileHint(message, 'error');
   updateDialogControls();
 }
 
@@ -2614,12 +3085,12 @@ function voiceMood() {
   return state.activePersona === 'female' ? 'happy' : 'calm';
 }
 
-function voicePayloadFor(persona) {
+function voicePayloadFor(persona, text = persona.voiceLine, mood = voiceMood()) {
   return {
-    text: persona.voiceLine,
+    text,
     persona: persona.id,
     relationship: 'lover',
-    mood: voiceMood(),
+    mood,
     archetype: state.activeVoiceArchetype
   };
 }
@@ -2700,6 +3171,7 @@ function playVoiceBlob(blob, requestId) {
   state.awaitingPlayback = false;
   serverStateEl.textContent = '正在说话';
   serverStateEl.title = '';
+  setMobileHint('正在说话', 'speaking');
   updateDialogControls();
   audio.play().then(() => {
     state.voiceReady = true;
@@ -2709,6 +3181,7 @@ function playVoiceBlob(blob, requestId) {
     state.awaitingPlayback = false;
     serverStateEl.textContent = '正在说话';
     serverStateEl.title = '';
+    setMobileHint('正在说话', 'speaking');
     updateDialogControls();
   }).catch(() => {
     state.voiceLoading = false;
@@ -2718,8 +3191,55 @@ function playVoiceBlob(blob, requestId) {
     state.voiceError = '';
     serverStateEl.textContent = '播放';
     serverStateEl.title = '真实语音已生成，请点“播放”或人物播放。';
+    setMobileHint('点人物播放', 'ready');
     updateDialogControls();
   });
+}
+
+function speakCompanionText(text, mood = voiceMood(), visualAction = 'voice') {
+  const cleanText = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (!cleanText) return false;
+  const persona = personas[state.activePersona];
+  const requestId = state.voiceRequestId + 1;
+  state.voiceRequestId = requestId;
+  stopCurrentAudio();
+  setAction(visualAction || 'voice', { skipVoiceRequest: true, lineText: cleanText });
+
+  if (!state.dialogEnabled) {
+    serverStateEl.textContent = '对话关';
+    setMobileHint('对话关');
+    updateDialogControls();
+    return false;
+  }
+
+  if (!voiceApiEnabledInPage) {
+    if (browserVoiceFallbackEnabled) return speakWithBrowserVoice(cleanText);
+    markVoiceUnavailable('语音未接', '当前页面未开启 voice=1，已禁用浏览器机械声。');
+    return false;
+  }
+
+  const payload = voicePayloadFor(persona, cleanText, mood);
+  state.voiceError = '';
+  serverStateEl.textContent = '生成中';
+  serverStateEl.title = '正在生成真实语音。';
+  setMobileHint('生成中', 'busy');
+  state.voiceLoading = true;
+  state.speaking = false;
+  state.awaitingPlayback = false;
+  updateDialogControls();
+  fetchVoiceBlob(payload).then((blob) => {
+    if (requestId !== state.voiceRequestId) return;
+    playVoiceBlob(blob, requestId);
+  }).catch(() => {
+    if (requestId !== state.voiceRequestId) return;
+    stopCurrentAudio();
+    if (browserVoiceFallbackEnabled) {
+      speakWithBrowserVoice(cleanText);
+      return;
+    }
+    markVoiceUnavailable('语音未接', `真实语音 API 未连接：${voiceApiBase}`);
+  });
+  return true;
 }
 
 function speakWithBrowserVoice(text) {
@@ -2739,7 +3259,8 @@ function speakWithBrowserVoice(text) {
   state.currentAudio = null;
   state.speaking = true;
   serverStateEl.textContent = '浏览器语音';
-  lineEl.textContent = persona.voiceLine;
+  setMobileHint('浏览器语音', 'speaking');
+  lineEl.textContent = text;
   window.speechSynthesis.speak(utterance);
   return true;
 }
@@ -2801,6 +3322,7 @@ function playQueuedAudio() {
   state.speaking = true;
   serverStateEl.textContent = '正在说话';
   serverStateEl.title = '';
+  setMobileHint('正在说话', 'speaking');
   updateDialogControls();
   state.currentAudio.play().then(() => {
     state.voiceReady = true;
@@ -2810,12 +3332,14 @@ function playQueuedAudio() {
     state.awaitingPlayback = false;
     serverStateEl.textContent = '正在说话';
     serverStateEl.title = '';
+    setMobileHint('正在说话', 'speaking');
     updateDialogControls();
   }).catch(() => {
     state.speaking = false;
     state.awaitingPlayback = true;
     serverStateEl.textContent = '播放';
     serverStateEl.title = '真实语音已生成，请点“播放”或人物播放。';
+    setMobileHint('点人物播放', 'ready');
     updateDialogControls();
   });
   return true;
@@ -2848,6 +3372,7 @@ function checkVoiceStatus() {
       if (!voiceBusy) {
         serverStateEl.textContent = status.enabled ? '本地语音' : '语音未接';
         serverStateEl.title = '';
+        setMobileHint(status.enabled ? '本地语音' : '语音未接', status.enabled ? '' : 'error');
       }
       if (!voiceBusy && status.cast && status.cast.voice) {
         serverStateEl.title = status.cast.voice;
@@ -2860,6 +3385,7 @@ function checkVoiceStatus() {
       if (browserVoiceFallbackEnabled) {
         state.voiceReady = false;
         serverStateEl.textContent = '浏览器语音';
+        setMobileHint('浏览器语音', 'speaking');
         updateDialogControls();
         return;
       }
@@ -2971,6 +3497,21 @@ if (voicePanel) {
 if (builderPanel) {
   builderPanel.addEventListener('click', (event) => event.stopPropagation());
 }
+if (mobileShell) {
+  mobileShell.addEventListener('click', (event) => event.stopPropagation());
+}
+if (mobileMicButton) {
+  mobileMicButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    toggleMobileVoiceInput();
+  });
+}
+if (mobileChatForm) {
+  mobileChatForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    sendMobileChat(mobileChatInput ? mobileChatInput.value : '', 'text');
+  });
+}
 document.addEventListener('click', () => {
   if (state.voicePanelOpen) setVoicePanelOpen(false);
   if (state.builderOpen) setBuilderOpen(false);
@@ -2984,7 +3525,11 @@ buildStage();
 buildCharacter();
 preloadModels();
 setPersona(state.activePersona);
-if (!pendingInitialAction) setAction(initialAction || 'idle');
+if (!pendingInitialAction && initialAction) {
+  setAction(initialAction);
+} else {
+  setInteractionScene(state.activeScene, false);
+}
 setDockOpen(controlsOpenInPage);
 checkVoiceStatus();
 resize();
