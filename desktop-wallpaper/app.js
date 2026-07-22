@@ -100,13 +100,18 @@ if (wallpaperEl && params.get('scene') === 'room') wallpaperEl.classList.add('bg
 if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('bg-night');
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 
-const modelAssetVersion = 'v0.2.15-hand-motion-1';
+const modelAssetVersion = 'v0.2.17-reference-actions-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
   female: {
     model: modelUrl('./assets/models/xiao-qi.glb'),
     animations: {
+      idle: modelUrl('./assets/models/xiao-qi-idle.glb'),
+      nod: modelUrl('./assets/models/xiao-qi-nod.glb'),
+      heart: modelUrl('./assets/models/xiao-qi-heart.glb'),
+      wave: modelUrl('./assets/models/xiao-qi-wave.glb'),
+      voice: modelUrl('./assets/models/xiao-qi-voice.glb'),
       walk: modelUrl('./assets/models/xiao-qi-walk.glb'),
       run: modelUrl('./assets/models/xiao-qi-run.glb')
     }
@@ -114,14 +119,29 @@ const modelAssets = {
   male: {
     model: modelUrl('./assets/models/qi-an.glb'),
     animations: {
+      idle: modelUrl('./assets/models/qi-an-idle.glb'),
+      nod: modelUrl('./assets/models/qi-an-nod.glb'),
+      heart: modelUrl('./assets/models/qi-an-heart.glb'),
+      wave: modelUrl('./assets/models/qi-an-wave.glb'),
+      voice: modelUrl('./assets/models/qi-an-voice.glb'),
       walk: modelUrl('./assets/models/qi-an-walk.glb'),
       run: modelUrl('./assets/models/qi-an-run.glb')
     }
   }
 };
 
-const runtimeModelActions = new Set(['walk', 'run']);
-const loopingModelActions = new Set(['walk', 'run']);
+const runtimeModelActions = new Set(['idle', 'nod', 'heart', 'wave', 'voice', 'walk', 'run']);
+const loopingModelActions = new Set(['idle', 'voice', 'walk', 'run']);
+const timedLoopingModelActions = new Set(['voice', 'walk', 'run']);
+const nativeModelActionDurations = {
+  idle: 5.4,
+  nod: 3.1,
+  heart: 3.25,
+  wave: 4.05,
+  voice: 4.8,
+  walk: 6.2,
+  run: 5.4
+};
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('./vendor/');
@@ -2067,6 +2087,40 @@ function applyRuntimeLocomotionLayer(entry, elapsed, isRun, profile, duration) {
   addBoneRotation(entry, 'RightHand', 0, 0, -stride * 0.035 * fade);
 }
 
+function modelNativeActionDuration(action, profile, voiceActive = false) {
+  const base = nativeModelActionDurations[action] || 3.2;
+  if (action === 'voice' && voiceActive) return Math.max(base, 4.8);
+  return base / profile.action;
+}
+
+function applyNativeActionPresentation(entry, action, t, elapsed, profile, duration, voiceActive) {
+  const fade = action === 'idle' ? 1 : modelActionFade(elapsed, duration, 0.18);
+  if (action === 'walk' || action === 'run') {
+    applyRuntimeLocomotionLayer(entry, elapsed, action === 'run', profile, duration);
+  } else {
+    modelLayer.position.y += Math.sin(t * 2.1 * profile.speed) * 0.003 * profile.breath;
+    modelLayer.rotation.y += Math.sin(t * 0.38 * profile.speed) * 0.006 * profile.gaze;
+    modelLayer.rotation.z += Math.sin(t * 0.74 * profile.speed) * 0.004 * profile.sway * fade;
+    addBoneRotation(entry, 'Head', -state.pointerY * 0.026 * fade, state.pointerX * 0.045 * fade, 0);
+  }
+
+  if (action === 'heart') {
+    const p = modelActionProgress(elapsed, duration);
+    const pulse = Math.sin(p * Math.PI * 2.3) * 0.04 * fade;
+    rig.heart.visible = true;
+    rig.heart.position.y = 1.66 + easeOutCubic(p) * 0.32;
+    rig.heart.scale.setScalar((0.2 + Math.abs(pulse) * 1.8) * fade + 0.001);
+  }
+
+  if (action === 'voice') {
+    const syllable = state.speaking ? Math.sin(t * 11.4 * profile.speed) : Math.sin(t * 4.2 * profile.speed) * 0.35;
+    addBoneRotation(entry, 'Head', syllable * 0.014 * fade, Math.sin(t * 2.1) * 0.012 * fade, 0.008 * fade);
+    if (!voiceActive) finishActionIfNeeded(elapsed, duration);
+  } else if (timedLoopingModelActions.has(action) || !loopingModelActions.has(action)) {
+    finishActionIfNeeded(elapsed, duration);
+  }
+}
+
 function updateModelPose(t, delta = 0) {
   const entry = modelState.active;
   if (!entry) return;
@@ -2086,13 +2140,12 @@ function updateModelPose(t, delta = 0) {
     ensureModelAnimations(state.activePersona, [state.action]);
   }
 
-  if ((state.action === 'walk' || state.action === 'run') && entry.actions[state.action]) {
-    const isRun = state.action === 'run';
-    const duration = (isRun ? 5.4 : 6.2) / profile.action;
+  if (runtimeModelActions.has(state.action) && entry.actions[state.action]) {
+    const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
+    const duration = modelNativeActionDuration(state.action, profile, voiceActive);
     playModelAnimation(entry, state.action);
     entry.mixer.update(delta * profile.action);
-    applyRuntimeLocomotionLayer(entry, elapsed, isRun, profile, duration);
-    finishActionIfNeeded(elapsed, duration);
+    applyNativeActionPresentation(entry, state.action, t, elapsed, profile, duration, voiceActive);
     return;
   }
 
