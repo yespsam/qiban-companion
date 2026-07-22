@@ -1773,6 +1773,19 @@ function canUseLocalVoiceInputApi() {
   }
 }
 
+function voiceReadyLabel(status = null) {
+  const engine = String(status?.tts_engine || '').toLowerCase();
+  if (engine.includes('netlify')) return '云端语音';
+  try {
+    const url = new URL(voiceApiBase, window.location.href);
+    const host = url.hostname;
+    const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0', ''].includes(host) || host.endsWith('.local');
+    return isLocalHost ? '本地语音' : '云端语音';
+  } catch (error) {
+    return '真实语音';
+  }
+}
+
 function stopMobileListening() {
   state.mobileListening = false;
   if (mobileMicButton) {
@@ -3159,7 +3172,7 @@ function playVoiceBlob(blob, requestId) {
   audio.onended = () => {
     URL.revokeObjectURL(url);
     if (state.currentAudioUrl === url) state.currentAudioUrl = null;
-    finishSpeaking('本地语音');
+    finishSpeaking(voiceReadyLabel());
   };
   audio.onerror = () => {
     URL.revokeObjectURL(url);
@@ -3370,9 +3383,9 @@ function checkVoiceStatus() {
       state.voiceError = status.enabled ? '' : '语音未接';
       const voiceBusy = state.voiceLoading || state.speaking || state.awaitingPlayback;
       if (!voiceBusy) {
-        serverStateEl.textContent = status.enabled ? '本地语音' : '语音未接';
+        serverStateEl.textContent = status.enabled ? voiceReadyLabel(status) : '语音未接';
         serverStateEl.title = '';
-        setMobileHint(status.enabled ? '本地语音' : '语音未接', status.enabled ? '' : 'error');
+        setMobileHint(status.enabled ? voiceReadyLabel(status) : '语音未接', status.enabled ? '' : 'error');
       }
       if (!voiceBusy && status.cast && status.cast.voice) {
         serverStateEl.title = status.cast.voice;
