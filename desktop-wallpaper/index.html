@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#000000">
   <title>栖伴 · 手机语音伴侣</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2307c160'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='34' fill='white'%3E%E6%A0%96%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css?v=v0.2.18-mobile-scenes-1">
+  <link rel="stylesheet" href="./style.css?v=v0.2.19-ui-polish-1">
 </head>
 <body>
   <main class="wallpaper" aria-label="栖伴 3D 桌面壁纸">
@@ -24,7 +24,7 @@
         <input id="mobile-chat-input" class="mobile-chat-input" type="text" inputmode="text" maxlength="160" placeholder="说一句情侣日常">
         <button class="mobile-send-btn" id="mobile-send-btn" type="submit" aria-label="发送">发</button>
       </form>
-      <p class="mobile-voice-hint" id="mobile-voice-hint">待机</p>
+      <button class="mobile-voice-hint" id="mobile-voice-hint" type="button" aria-live="polite" disabled>待机</button>
     </section>
     <section class="dock" aria-label="桌面伴侣控制">
       <button class="menu-toggle" id="menu-btn" type="button" aria-label="打开控制" aria-expanded="false">
@@ -56,6 +56,6 @@
     <section class="voice-panel" id="voice-panel" aria-label="声线选择" hidden></section>
     <section class="builder-panel" id="builder-panel" aria-label="形象生成" hidden></section>
   </main>
-  <script type="module" src="./app.js?v=v0.2.18-mobile-scenes-1"></script>
+  <script type="module" src="./app.js?v=v0.2.19-ui-polish-1"></script>
 </body>
 </html>

@@ -113,7 +113,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.18-mobile-scenes-1';
+const modelAssetVersion = 'v0.2.19-ui-polish-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -1406,6 +1406,8 @@ function setPersona(id) {
   updateVoiceControls();
   renderBuilderPanel();
   renderSceneControls();
+  renderMobileChat();
+  if (!modelState.loaded[id]) document.body.classList.remove('model-ready');
   loadModel(id);
   activateLoadedModel(id);
   loadVoiceResources();
@@ -1632,6 +1634,8 @@ function setMobileHint(text, mode = '') {
   if (!mobileVoiceHint) return;
   mobileVoiceHint.textContent = text;
   mobileVoiceHint.dataset.mode = mode;
+  mobileVoiceHint.disabled = mode !== 'ready';
+  if (mobileShell) mobileShell.dataset.voiceMode = mode || 'idle';
 }
 
 function renderSceneControls() {
@@ -1641,8 +1645,10 @@ function renderSceneControls() {
     const button = document.createElement('button');
     button.className = 'scene-chip';
     button.type = 'button';
+    button.dataset.scene = item.id;
     button.textContent = item.name;
     button.classList.toggle('active', item.id === state.activeScene);
+    button.setAttribute('aria-pressed', item.id === state.activeScene ? 'true' : 'false');
     button.addEventListener('click', (event) => {
       event.stopPropagation();
       setInteractionScene(item.id, true);
@@ -1654,8 +1660,10 @@ function renderSceneControls() {
 function appendMobileMessage(role, text) {
   const clean = String(text || '').trim();
   if (!clean) return;
+  const latest = state.mobileMessages[state.mobileMessages.length - 1];
+  if (latest && latest.role === role && latest.text === clean) return;
   state.mobileMessages.push({ role, text: clean });
-  state.mobileMessages = state.mobileMessages.slice(-5);
+  state.mobileMessages = state.mobileMessages.slice(-4);
   renderMobileChat();
 }
 
@@ -1663,10 +1671,16 @@ function renderMobileChat() {
   if (!mobileChat) return;
   mobileChat.textContent = '';
   state.mobileMessages.forEach((message) => {
+    const row = document.createElement('div');
+    const meta = document.createElement('span');
     const bubble = document.createElement('p');
+    row.className = `mobile-message ${message.role}`;
+    meta.className = 'mobile-bubble-meta';
+    meta.textContent = message.role === 'user' ? '你' : personas[state.activePersona].name;
     bubble.className = `mobile-bubble ${message.role}`;
     bubble.textContent = message.text;
-    mobileChat.appendChild(bubble);
+    row.append(meta, bubble);
+    mobileChat.appendChild(row);
   });
   mobileChat.scrollTop = mobileChat.scrollHeight;
 }
@@ -2101,6 +2115,7 @@ function activateLoadedModel(id) {
   updateCosmeticLayer();
   modelLayer.visible = true;
   avatar.visible = false;
+  document.body.classList.add('model-ready');
   if (pendingInitialAction && state.activePersona === id) {
     const action = pendingInitialAction;
     pendingInitialAction = '';
@@ -2139,6 +2154,7 @@ function loadModel(id) {
     if (state.activePersona === id && !modelState.active) {
       modelLayer.visible = false;
       avatar.visible = true;
+      document.body.classList.add('model-ready');
       serverStateEl.textContent = '模型未接';
       serverStateEl.title = '3D 模型加载失败，已临时回退到内置人物。';
     }
@@ -3203,8 +3219,8 @@ function playVoiceBlob(blob, requestId) {
     state.voiceReady = true;
     state.voiceError = '';
     serverStateEl.textContent = '播放';
-    serverStateEl.title = '真实语音已生成，请点“播放”或人物播放。';
-    setMobileHint('点人物播放', 'ready');
+    serverStateEl.title = '真实语音已生成，请点状态按钮播放。';
+    setMobileHint('点此播放', 'ready');
     updateDialogControls();
   });
 }
@@ -3351,8 +3367,8 @@ function playQueuedAudio() {
     state.speaking = false;
     state.awaitingPlayback = true;
     serverStateEl.textContent = '播放';
-    serverStateEl.title = '真实语音已生成，请点“播放”或人物播放。';
-    setMobileHint('点人物播放', 'ready');
+    serverStateEl.title = '真实语音已生成，请点状态按钮播放。';
+    setMobileHint('点此播放', 'ready');
     updateDialogControls();
   });
   return true;
@@ -3517,6 +3533,12 @@ if (mobileMicButton) {
   mobileMicButton.addEventListener('click', (event) => {
     event.stopPropagation();
     toggleMobileVoiceInput();
+  });
+}
+if (mobileVoiceHint) {
+  mobileVoiceHint.addEventListener('click', (event) => {
+    event.stopPropagation();
+    playQueuedAudio();
   });
 }
 if (mobileChatForm) {
