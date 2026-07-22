@@ -43,11 +43,11 @@
   };
   var PERSONA_VISUALS = {
     female_companion: {
-      image: '/static/assets/xiao-qi-avatar.png',
+      image: '/static/assets/xiao-qi-avatar.webp',
       line: '温柔、亲近、会记住你的心事。声音和语言模型会随关系身份一起调整。'
     },
     male_companion: {
-      image: '/static/assets/qi-an-avatar.png',
+      image: '/static/assets/qi-an-avatar.webp',
       line: '沉稳、可靠、低声陪伴。先稳住情绪，再给你最实在的行动建议。'
     }
   };

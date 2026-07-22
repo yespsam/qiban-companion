@@ -113,33 +113,19 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.19-ui-polish-1';
+const modelAssetVersion = 'v0.2.19-ui-polish-merged-anims-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
+  // 每个角色只有一个 GLB：本体(网格/贴图/蒙皮) + 全部动作动画 clip（按 idle/walk/... 命名），
+  // 动作切换零网络请求；加载后见 loadModel 内的 clip 注册。
   female: {
     model: modelUrl('./assets/models/xiao-qi.glb'),
-    animations: {
-      idle: modelUrl('./assets/models/xiao-qi-idle.glb'),
-      nod: modelUrl('./assets/models/xiao-qi-nod.glb'),
-      heart: modelUrl('./assets/models/xiao-qi-heart.glb'),
-      wave: modelUrl('./assets/models/xiao-qi-wave.glb'),
-      voice: modelUrl('./assets/models/xiao-qi-voice.glb'),
-      walk: modelUrl('./assets/models/xiao-qi-walk.glb'),
-      run: modelUrl('./assets/models/xiao-qi-run.glb')
-    }
+    animations: {}
   },
   male: {
     model: modelUrl('./assets/models/qi-an.glb'),
-    animations: {
-      idle: modelUrl('./assets/models/qi-an-idle.glb'),
-      nod: modelUrl('./assets/models/qi-an-nod.glb'),
-      heart: modelUrl('./assets/models/qi-an-heart.glb'),
-      wave: modelUrl('./assets/models/qi-an-wave.glb'),
-      voice: modelUrl('./assets/models/qi-an-voice.glb'),
-      walk: modelUrl('./assets/models/qi-an-walk.glb'),
-      run: modelUrl('./assets/models/qi-an-run.glb')
-    }
+    animations: {}
   }
 };
 
@@ -2143,6 +2129,18 @@ function loadModel(id) {
       hasFingerBones: false
     };
     entry.hasFingerBones = modelHasFingerBones(entry);
+    // 合并版 GLB：本体自带全部动作 clip（按动作名命名），加载即注册，动作切换零请求。
+    (gltf.animations || []).forEach((clip) => {
+      const name = clip.name;
+      if (!runtimeModelActions.has(name)) return;
+      if (!Number.isFinite(clip.duration) || clip.duration <= 0) return;
+      entry.animationClips[name] = clip;
+      const action = entry.mixer.clipAction(clip, entry.root);
+      const shouldLoop = loopingModelActions.has(name);
+      action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
+      action.clampWhenFinished = !shouldLoop;
+      entry.actions[name] = action;
+    });
     modelState.loaded[id] = entry;
     modelState.loading[id] = false;
     if (state.activePersona === id) {
