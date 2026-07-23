@@ -100,7 +100,17 @@ function resolveApiBase() {
 
 const voiceApiEnabledInPage = enabledParam('voice', true);
 const browserVoiceFallbackEnabled = enabledParam('browserVoice', false);
-const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') !== '0');
+const dialogPreferenceVersion = 'v0.2.42-dialog-panel';
+const shouldRestoreDialog = !params.has('dialog')
+  && storedValue('qiban-dialog-version') !== dialogPreferenceVersion;
+if (shouldRestoreDialog) {
+  storeValue('qiban-dialog', '1');
+  storeValue('qiban-dialog-version', dialogPreferenceVersion);
+}
+const dialogEnabledInPage = enabledParam(
+  'dialog',
+  shouldRestoreDialog || storedValue('qiban-dialog') !== '0'
+);
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
@@ -115,7 +125,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.41-hybrid-actions-chat';
+const modelAssetVersion = 'v0.2.42-dialog-panel';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
