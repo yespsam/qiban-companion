@@ -9,33 +9,34 @@ import { NodeIO } from '@gltf-transform/core';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const character = process.argv[2] || 'male';
+const v2Root = 'meshy_output/20260724_025638_qiban-v2-detailed-characters_019f9056';
 const builds = {
   female: {
-    // F4: purple hair with the black-green short outfit selected on 2026-07-23.
-    base: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/rigged.glb',
-    output: 'desktop-wallpaper/assets/models/xiao-qi.glb',
+    base: `${v2Root}/xiao-qi-v2/rigged.glb`,
+    output: 'desktop-wallpaper/assets/models/xiao-qi-v2.glb',
+    mobileOutput: 'desktop-wallpaper/assets/models/xiao-qi-v2-mobile.glb',
     animations: {
-      idle: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/idle.glb',
-      nod: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/nod.glb',
-      heart: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/heart.glb',
-      wave: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/wave.glb',
-      voice: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/voice.glb',
-      walk: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/walking.glb',
-      run: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/running.glb'
+      idle: `${v2Root}/xiao-qi-v2/idle.glb`,
+      nod: `${v2Root}/xiao-qi-v2/nod.glb`,
+      heart: `${v2Root}/xiao-qi-v2/heart.glb`,
+      wave: `${v2Root}/xiao-qi-v2/wave.glb`,
+      voice: `${v2Root}/xiao-qi-v2/voice.glb`,
+      walk: `${v2Root}/xiao-qi-v2/walk.glb`,
+      run: `${v2Root}/xiao-qi-v2/run.glb`
     }
   },
   male: {
-    // M4: purple hair with the black-green jacket selected on 2026-07-23.
-    base: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/rigged.glb',
-    output: 'desktop-wallpaper/assets/models/qi-an.glb',
+    base: `${v2Root}/qi-an-v2/rigged.glb`,
+    output: 'desktop-wallpaper/assets/models/qi-an-v2.glb',
+    mobileOutput: 'desktop-wallpaper/assets/models/qi-an-v2-mobile.glb',
     animations: {
-      idle: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/idle.glb',
-      nod: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/nod.glb',
-      heart: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/heart.glb',
-      wave: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/wave.glb',
-      voice: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/voice.glb',
-      walk: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/walking.glb',
-      run: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/running.glb'
+      idle: `${v2Root}/qi-an-v2/idle.glb`,
+      nod: `${v2Root}/qi-an-v2/nod.glb`,
+      heart: `${v2Root}/qi-an-v2/heart.glb`,
+      wave: `${v2Root}/qi-an-v2/wave.glb`,
+      voice: `${v2Root}/qi-an-v2/voice.glb`,
+      walk: `${v2Root}/qi-an-v2/walk.glb`,
+      run: `${v2Root}/qi-an-v2/run.glb`
     }
   }
 };
@@ -132,8 +133,11 @@ async function main() {
   const config = builds[character];
   const temp = await mkdtemp(join(tmpdir(), `qiban-${character}-`));
   const merged = join(temp, 'merged.glb');
-  const textured = join(temp, 'textured.glb');
+  const desktopTextured = join(temp, 'desktop-textured.glb');
+  const mobileResized = join(temp, 'mobile-resized.glb');
+  const mobileTextured = join(temp, 'mobile-textured.glb');
   const output = resolve(root, config.output);
+  const mobileOutput = resolve(root, config.mobileOutput);
 
   try {
     const document = await io.read(resolve(root, config.base));
@@ -149,19 +153,13 @@ async function main() {
     }
 
     await io.write(merged, document);
-    runCli(['webp', merged, textured, '--quality', '90', '--effort', '4']);
-    runCli([
-      'optimize', textured, output,
-      '--compress', 'draco',
-      '--texture-compress', 'false',
-      '--texture-size', '4096',
-      '--simplify', 'false',
-      '--flatten', 'false',
-      '--join', 'false',
-      '--palette', 'false',
-      '--resample', 'true'
-    ]);
+    runCli(['webp', merged, desktopTextured, '--quality', '94', '--effort', '5']);
+    runCli(['draco', desktopTextured, output, '--decode-speed', '7']);
+    runCli(['resize', merged, mobileResized, '--width', '2048', '--height', '2048']);
+    runCli(['webp', mobileResized, mobileTextured, '--quality', '92', '--effort', '5']);
+    runCli(['draco', mobileTextured, mobileOutput, '--decode-speed', '7']);
     console.log(`Built ${config.output}`);
+    console.log(`Built ${config.mobileOutput}`);
   } finally {
     await rm(temp, { recursive: true, force: true });
   }

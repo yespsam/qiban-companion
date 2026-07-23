@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.48-presence-ui';
+const modelAssetVersion = 'v0.2.49-meshy-v2';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches;
 const characterModelUrl = (slug) => modelUrl(
@@ -139,26 +139,25 @@ const characterModelUrl = (slug) => modelUrl(
 );
 
 const modelAssets = {
-  // One GLB per character. Stable runtime bone motion avoids malformed generated clips.
+  // One compact GLB per character, including the full V2 motion library.
   female: {
     selection: 'F4',
-    model: characterModelUrl('xiao-qi'),
+    model: characterModelUrl('xiao-qi-v2'),
     animations: {},
     nativeAnimations: true,
     modeledHands: true
   },
   male: {
     selection: 'M4',
-    model: characterModelUrl('qi-an'),
+    model: characterModelUrl('qi-an-v2'),
     animations: {},
     nativeAnimations: true,
     modeledHands: true
   }
 };
 
-// Locomotion and the vetted heart gesture use captured clips. Idle and the
-// other gestures stay on the tuned second-generation poses so they remain
-// readable and front-facing.
+// Keep the companion front-facing for conversation. The captured heart and
+// locomotion clips are stable; conversational gestures use the tuned rig pose.
 const runtimeModelActions = new Set(['heart', 'walk', 'run']);
 const loopingModelActions = new Set(['idle', 'voice', 'walk', 'run']);
 const timedLoopingModelActions = new Set(['voice', 'walk', 'run']);
@@ -180,9 +179,7 @@ const nativeModelPlaybackRates = {
   walk: 1,
   run: 1
 };
-const nativeModelClipRanges = {
-  heart: { start: 0, end: 70 }
-};
+const nativeModelClipRanges = {};
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('./vendor/');
@@ -241,10 +238,10 @@ const personas = {
     cheek: 0xf0a996,
     scale: 1.04,
     idlePoseTime: 3.02,
-    modelScaleDesktop: 1.55,
-    modelScaleMobile: 1.58,
-    modelYDesktop: 0.08,
-    modelYMobile: 0.2,
+    modelScaleDesktop: 1.26,
+    modelScaleMobile: 1.42,
+    modelYDesktop: -0.08,
+    modelYMobile: 0.04,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -2628,7 +2625,7 @@ function modelFrameScaleMultiplier() {
     return {
       wave: 0.92,
       nod: 1,
-      heart: 0.94,
+      heart: 0.82,
       voice: 0.98
     }[state.action] || 1;
   }
@@ -2706,9 +2703,10 @@ function applyNativeActionPresentation(entry, action, t, elapsed, profile, durat
   if (action === 'heart') {
     const p = modelActionProgress(elapsed, duration);
     const pulse = Math.sin(p * Math.PI * 2.3) * 0.04 * fade;
+    const mobile = window.innerWidth < 720;
     rig.heart.visible = true;
-    rig.heart.position.y = 1.66 + easeOutCubic(p) * 0.32;
-    rig.heart.scale.setScalar((0.2 + Math.abs(pulse) * 1.8) * fade + 0.001);
+    rig.heart.position.y = (mobile ? 1.34 : 1.58) + easeOutCubic(p) * (mobile ? 0.16 : 0.24);
+    rig.heart.scale.setScalar(((mobile ? 0.15 : 0.2) + Math.abs(pulse) * 1.45) * fade + 0.001);
   }
 
   if (action === 'voice') {
@@ -2773,9 +2771,9 @@ function updateModelPose(t, delta = 0) {
     addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.036 * envelope);
     addBoneRotation(entry, 'Spine02', 0.008 * envelope, 0, -0.02 * envelope);
     addBoneRotation(entry, 'LeftShoulder', 0, -0.022 * raise, 0.24 * raise);
-    addBoneRotation(entry, 'LeftArm', -1.2 * raise, 0.025 * raise, 0.78 * raise);
+    addBoneRotation(entry, 'LeftArm', -1.2 * raise, 0.025 * raise, 1.02 * raise);
     addBoneRotation(entry, 'LeftForeArm', -1.15 * raise, -0.02 * raise, 0.34 * raise - flutter);
-    addBoneRotation(entry, 'LeftHand', 0, 0, -flutter * 0.48);
+    addBoneRotation(entry, 'LeftHand', 0, 0, -0.18 * raise - flutter * 0.48);
     addBoneRotation(entry, 'RightArm', 0.024 * envelope, -0.02 * envelope, -0.045 * envelope);
     addBoneRotation(entry, 'Head', -0.008 * envelope, 0, -0.028 * envelope);
     finishActionIfNeeded(elapsed, duration);
