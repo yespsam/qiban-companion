@@ -115,7 +115,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.21-llm-input-1';
+const modelAssetVersion = 'v0.2.22-llm-modal-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -3248,17 +3248,21 @@ function renderLlmPanel() {
   hint.textContent = '绑定后人物按你说的每句话实时生成回应（不再走模板）。Key 只存在本机浏览器，随对话请求加密传输。';
   llmPanel.appendChild(hint);
 
-  const keyInput = document.createElement('input');
-  keyInput.className = 'llm-input';
-  keyInput.type = 'password';
-  keyInput.placeholder = 'sk-……（platform.moonshot.cn 控制台获取）';
+  const keyInput = document.createElement('textarea');
+  keyInput.className = 'llm-input llm-key-input';
+  keyInput.rows = 3;
+  keyInput.placeholder = '粘贴 sk-…… API Key';
   keyInput.value = state.llmKey || '';
   keyInput.autocomplete = 'off';
   keyInput.inputMode = 'text';
   keyInput.spellcheck = false;
   keyInput.autocapitalize = 'none';
+  keyInput.enterKeyHint = 'done';
   keyInput.addEventListener('click', (event) => event.stopPropagation());
   keyInput.addEventListener('pointerdown', (event) => event.stopPropagation());
+  keyInput.addEventListener('keydown', (event) => event.stopPropagation());
+  keyInput.addEventListener('input', (event) => event.stopPropagation());
+  keyInput.addEventListener('paste', (event) => event.stopPropagation());
   llmPanel.appendChild(keyInput);
 
   const modelSelect = document.createElement('select');
@@ -3277,6 +3281,32 @@ function renderLlmPanel() {
   modelSelect.addEventListener('click', (event) => event.stopPropagation());
   modelSelect.addEventListener('pointerdown', (event) => event.stopPropagation());
   llmPanel.appendChild(modelSelect);
+
+  const status = document.createElement('div');
+  status.className = 'llm-status';
+  status.textContent = state.llmKey ? `当前已绑定 ${state.llmModel}` : '当前未绑定：使用内置模板回复';
+
+  const pasteBtn = document.createElement('button');
+  pasteBtn.className = 'voice-option';
+  pasteBtn.type = 'button';
+  pasteBtn.textContent = '粘贴';
+  pasteBtn.addEventListener('click', async (event) => {
+    event.stopPropagation();
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      status.textContent = '请长按输入框粘贴';
+      keyInput.focus();
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      keyInput.value = String(text || '').trim();
+      status.textContent = keyInput.value ? '已粘贴，请点保存绑定' : '剪贴板为空';
+      keyInput.focus();
+    } catch (error) {
+      status.textContent = '请长按输入框粘贴';
+      keyInput.focus();
+    }
+  });
 
   const row = document.createElement('div');
   row.className = 'llm-row';
@@ -3304,13 +3334,10 @@ function renderLlmPanel() {
     saveLlmBinding('', modelSelect.value);
     status.textContent = '已清除绑定，回到内置模板';
   });
+  row.appendChild(pasteBtn);
   row.appendChild(saveBtn);
   row.appendChild(clearBtn);
   llmPanel.appendChild(row);
-
-  const status = document.createElement('div');
-  status.className = 'llm-status';
-  status.textContent = state.llmKey ? `当前已绑定 ${state.llmModel}` : '当前未绑定：使用内置模板回复';
   llmPanel.appendChild(status);
 
   window.setTimeout(() => keyInput.focus(), 40);

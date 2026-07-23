@@ -294,8 +294,7 @@ body.mobile-mode .dock {
 }
 
 body.mobile-mode .voice-panel,
-body.mobile-mode .builder-panel,
-body.mobile-mode .llm-panel {
+body.mobile-mode .builder-panel {
   bottom: calc(max(12px, env(safe-area-inset-bottom)) + 154px);
 }
 
@@ -593,18 +592,24 @@ body.mobile-mode .mobile-chat {
 }
 
 .llm-panel {
-  position: absolute;
-  right: max(18px, env(safe-area-inset-right));
-  bottom: calc(max(22px, env(safe-area-inset-bottom)) + 54px);
-  z-index: 4;
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
   display: grid;
-  gap: 8px;
-  width: min(320px, calc(100vw - 24px));
-  padding: 12px;
+  gap: 10px;
+  width: min(380px, calc(100vw - 24px));
+  max-height: min(76svh, 520px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(8, 12, 10, 0.78);
-  backdrop-filter: blur(16px);
+  background: rgba(8, 12, 10, 0.9);
+  box-shadow: 0 20px 64px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(18px);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
 }
 
 .llm-panel[hidden] {
@@ -635,6 +640,16 @@ body.mobile-mode .mobile-chat {
   font-size: 13px;
 }
 
+.llm-key-input {
+  min-height: 86px;
+  padding: 10px;
+  line-height: 1.45;
+  resize: vertical;
+  word-break: break-all;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .llm-input:focus {
   outline: none;
   border-color: var(--accent);
@@ -642,7 +657,7 @@ body.mobile-mode .mobile-chat {
 
 .llm-row {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -878,6 +893,16 @@ body.mobile-mode .mobile-chat {
     min-height: 36px;
     padding: 0 8px;
     font-size: 12px;
+  }
+
+  .llm-panel {
+    top: 46%;
+    width: min(360px, calc(100vw - 18px));
+    max-height: min(70svh, 480px);
+  }
+
+  .llm-input {
+    font-size: 16px;
   }
 
   .builder-panel {
