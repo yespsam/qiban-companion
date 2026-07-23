@@ -10,8 +10,14 @@ import { NodeIO } from '@gltf-transform/core';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const character = process.argv[2] || 'male';
 const builds = {
+  female: {
+    // F4: purple hair with the black-green short outfit selected on 2026-07-23.
+    base: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/rigged.glb',
+    output: 'desktop-wallpaper/assets/models/xiao-qi.glb',
+    animations: {}
+  },
   male: {
-    // Keep the latest approved appearance; runtime motion is tuned independently.
+    // M4: purple hair with the black-green jacket selected on 2026-07-23.
     base: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/rigged.glb',
     output: 'desktop-wallpaper/assets/models/qi-an.glb',
     animations: {}

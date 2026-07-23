@@ -115,18 +115,20 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.36-latest-model-second-motion';
+const modelAssetVersion = 'v0.2.37-f4-m4-selected';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
   // One GLB per character. Stable runtime bone motion avoids malformed generated clips.
   female: {
+    selection: 'F4',
     model: modelUrl('./assets/models/xiao-qi.glb'),
     animations: {},
     nativeAnimations: false,
     modeledHands: true
   },
   male: {
+    selection: 'M4',
     model: modelUrl('./assets/models/qi-an.glb'),
     animations: {},
     nativeAnimations: false,
@@ -225,10 +227,10 @@ const personas = {
     cheek: 0xf0a996,
     scale: 1.04,
     idlePoseTime: 3.02,
-    modelScaleDesktop: 1.55,
+    modelScaleDesktop: 1.28,
     modelScaleMobile: 1.15,
-    modelYDesktop: 0.08,
-    modelYMobile: 0.08,
+    modelYDesktop: -0.12,
+    modelYMobile: -0.1,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -1411,7 +1413,10 @@ function setPersona(id) {
   renderSceneControls();
   if (personaChanged) resetConversationContext(sceneOpening(currentInteractionScene()));
   renderMobileChat();
-  if (!modelState.loaded[id]) document.body.classList.remove('model-ready');
+  if (!modelState.loaded[id]) {
+    document.body.classList.remove('model-ready');
+    delete document.body.dataset.modelSelection;
+  }
   loadModel(id);
   activateLoadedModel(id);
   loadVoiceResources();
@@ -2250,6 +2255,7 @@ function activateLoadedModel(id) {
   }
 
   modelState.active = entry;
+  document.body.dataset.modelSelection = entry.selection;
 
   if (entry.root.parent !== modelLayer) {
     modelLayer.clear();
@@ -2278,6 +2284,7 @@ function loadModel(id) {
     const root = gltf.scene;
     normalizeLoadedModel(root);
     const entry = {
+      selection: asset.selection,
       root,
       bones: collectModelBones(root),
       clips: gltf.animations || [],
