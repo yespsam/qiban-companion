@@ -11,8 +11,8 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const character = process.argv[2] || 'male';
 const builds = {
   male: {
-    // Meshy action clips deform this rig, so runtime procedural motion drives the clean bind pose.
-    base: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/rigged.glb',
+    // Restore the approved second-version character from its 4K source texture.
+    base: 'meshy_output/20260720_191800_male-qiban-companion_019f7f3d/rigged-remeshed.glb',
     output: 'desktop-wallpaper/assets/models/qi-an.glb',
     animations: {}
   }

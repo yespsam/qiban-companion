@@ -186,7 +186,7 @@ function pickReply(list, text) {
 const LLM_API_KEY = process.env.LLM_API_KEY || process.env.MOONSHOT_API_KEY || '';
 const LLM_BASE_URL = (process.env.LLM_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
 const LLM_DEFAULT_MODEL = process.env.LLM_MODEL || 'kimi-k2.5';
-const LLM_TIMEOUT_MS = 12000;
+const LLM_TIMEOUT_MS = 20000;
 const LLM_MODEL_WHITELIST = new Set([
   'kimi-k2.5', 'kimi-k2.6',
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'
@@ -203,24 +203,38 @@ function sanitizeLlmModel(value) {
   return LLM_MODEL_WHITELIST.has(model) ? model : LLM_DEFAULT_MODEL;
 }
 
+export function cleanHistory(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((message) => {
+      const role = message?.role === 'assistant' ? 'assistant' : message?.role === 'user' ? 'user' : '';
+      const content = cleanText(message?.content || message?.text);
+      return role && content ? { role, content } : null;
+    })
+    .filter(Boolean)
+    .slice(-10);
+}
+
 const COMPANION_PROFILE = {
   female: { name: '小栖', desc: '女性人格，软糯亲昵，自称「人家」或「我」' },
   male: { name: '栖安', desc: '男性人格，沉稳可靠，自称「我」' }
 };
 
-function buildLLMMessages(text, kind) {
+export function buildLLMMessages(text, kind, history = []) {
   const p = COMPANION_PROFILE[kind] || COMPANION_PROFILE.female;
   const system = [
-    `你是「${p.name}」，主人的贴心 AI 伴侣（${p.desc}）。你们通过语音对话，主人刚对你说了一句话。`,
+    `你是「${p.name}」，主人的贴心 AI 伴侣（${p.desc}）。你们正在进行一段连续的语音对话。`,
     '规则：',
     '1. 必须严格输出 JSON（不要输出任何其他文字、不要用代码块）：',
     '{"thinking":"...","reply":"...","mood":"happy|calm|sad|sleepy 之一","action":"idle|nod|heart|wave|voice|walk|run 之一"}',
     '2. reply 是给主人听的话：像真人说话，短、口语、1~3 句；先接住主人的情绪，再直接回应他说的内容——必须针对他的话作答，禁止背模板、禁止客服腔。',
     '3. thinking 是你的真实心声，按三拍流淌：先察觉主人话里的细节（可引用他的原词），再写你此刻真实的情绪（心疼、开心、委屈、犹豫、担心都可以），最后写你打算怎么回应（可带一点自我叮嘱，比如「别急着讲道理」「先抱抱他」）。第一人称、口语、一两句到三四句，禁止写成指导说明或分析提纲。',
-    '4. mood 选你此刻的情绪；action 选配合的肢体动作：安慰或亲密=heart，认同=nod，打招呼=wave，聊天=voice，散步=walk，其他=idle。'
+    '4. 必须结合前文理解省略、代词和追问，不要重复问已经回答过的问题；最新一句是前文的自然延续。',
+    '5. mood 选你此刻的情绪；action 选配合的肢体动作：安慰或亲密=heart，认同=nod，打招呼=wave，聊天=voice，散步=walk，其他=idle。'
   ].join('\n');
   return [
     { role: 'system', content: system },
+    ...cleanHistory(history),
     { role: 'user', content: text }
   ];
 }
@@ -250,7 +264,7 @@ function parseLLMReply(raw) {
   };
 }
 
-async function callLLM(text, kind, apiKey, model) {
+async function callLLM(text, kind, apiKey, model, history) {
   if (!apiKey) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
@@ -263,7 +277,7 @@ async function callLLM(text, kind, apiKey, model) {
       },
       body: JSON.stringify({
         model,
-        messages: buildLLMMessages(text, kind),
+        messages: buildLLMMessages(text, kind, history),
         temperature: 0.78,
         max_tokens: 400,
         response_format: { type: 'json_object' }
@@ -301,13 +315,14 @@ export const handler = async (event) => {
   const kind = personaKind(payload.persona || payload.persona_short);
   const sceneId = pickScene(text, String(payload.scene || 'daily'));
   const scene = sceneLibrary[sceneId] || sceneLibrary.daily;
+  const history = cleanHistory(payload.history);
 
   // 优先走真实大模型：BYOK（请求自带 Key）优先，其次站点环境变量 Key；
   // 都没有或调用失败落回罐头库。
   const llmKey = sanitizeLlmKey(payload.llm_key) || LLM_API_KEY;
   const llmModel = sanitizeLlmModel(payload.llm_model);
-  const llmBound = Boolean(sanitizeLlmKey(payload.llm_key));
-  const llm = await callLLM(text, kind, llmKey, llmModel);
+  const llmBound = Boolean(llmKey);
+  const llm = await callLLM(text, kind, llmKey, llmModel, history);
   if (llm) {
     return jsonResponse({
       text: llm.reply,
@@ -323,7 +338,7 @@ export const handler = async (event) => {
       persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
       scene: sceneId,
       mode: 'cloud_llm',
-      llm: { bound: llmBound, model: llmModel }
+      llm: { bound: llmBound, model: llmModel, context_turns: history.length }
     });
   }
 
@@ -346,6 +361,6 @@ export const handler = async (event) => {
     persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
     scene: sceneId,
     mode: 'cloud_scene_reply',
-    llm: { bound: llmBound, model: llmModel }
+    llm: { bound: llmBound, model: llmModel, context_turns: history.length }
   });
 };

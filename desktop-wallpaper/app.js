@@ -115,7 +115,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.34-male-hd-layout';
+const modelAssetVersion = 'v0.2.35-second-motion-context';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -134,7 +134,7 @@ const modelAssets = {
   }
 };
 
-const runtimeModelActions = new Set(['idle', 'nod', 'heart', 'wave', 'voice', 'walk', 'run']);
+const runtimeModelActions = new Set([]);
 const loopingModelActions = new Set(['idle', 'voice', 'walk', 'run']);
 const timedLoopingModelActions = new Set(['voice', 'walk', 'run']);
 const nativeModelActionDurations = {
@@ -224,11 +224,11 @@ const personas = {
     panel: 0xb7ffd1,
     cheek: 0xf0a996,
     scale: 1.04,
-    idlePoseTime: 3.02,
-    modelScaleDesktop: 1.1,
-    modelScaleMobile: 1.15,
-    modelYDesktop: -0.08,
-    modelYMobile: 0.08,
+    idlePoseTime: 0.9,
+    modelScaleDesktop: 0.74,
+    modelScaleMobile: 0.82,
+    modelYDesktop: -0.26,
+    modelYMobile: -0.22,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -570,6 +570,7 @@ const state = {
   voiceResources: [],
   activeScene: storedPlaySceneId(),
   mobileMessages: [],
+  conversationHistory: [],
   mobileBusy: false,
   mobileListening: false,
   mobileRecognition: null,
@@ -586,6 +587,7 @@ const state = {
   // BYOK：应用内绑定的 Kimi 大模型 Key（仅存本机 localStorage，随对话请求下发）
   llmKey: storedValue('qiban_llm_key') || '',
   llmModel: storedValue('qiban_llm_model') || 'kimi-k2.5',
+  llmConnectionState: storedValue('qiban_llm_key') ? 'saved' : 'idle',
   interactionCount: 0,
   voiceLoading: false,
   speaking: false,
@@ -1368,6 +1370,7 @@ function setVisible(parts, visible) {
 }
 
 function setPersona(id) {
+  const personaChanged = state.activePersona !== id;
   state.activePersona = id;
   storeValue('qiban-persona', id);
   clearVoicePrefetch();
@@ -1406,6 +1409,7 @@ function setPersona(id) {
   updateVoiceControls();
   renderBuilderPanel();
   renderSceneControls();
+  if (personaChanged) resetConversationContext(sceneOpening(currentInteractionScene()));
   renderMobileChat();
   if (!modelState.loaded[id]) document.body.classList.remove('model-ready');
   loadModel(id);
@@ -1668,6 +1672,24 @@ function appendMobileMessage(role, text) {
   renderMobileChat();
 }
 
+function appendConversationTurn(role, text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  if (!clean || !['user', 'assistant'].includes(role)) return;
+  state.conversationHistory.push({ role, content: clean });
+  state.conversationHistory = state.conversationHistory.slice(-10);
+}
+
+function resetConversationContext(opening = '') {
+  const clean = String(opening || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+  state.conversationHistory = [];
+  state.mobileMessages = [];
+  if (clean) {
+    state.conversationHistory.push({ role: 'assistant', content: clean });
+    state.mobileMessages.push({ role: 'companion', text: clean });
+  }
+  renderMobileChat();
+}
+
 function renderMobileChat() {
   if (!mobileChat) return;
   mobileChat.textContent = '';
@@ -1791,7 +1813,8 @@ function companionChatPayload(text) {
     relationship: 'lover',
     scene: state.activeScene,
     mood: currentInteractionScene().mood,
-    archetype: state.activeVoiceArchetype
+    archetype: state.activeVoiceArchetype,
+    history: state.conversationHistory.slice(0, -1)
   };
   // 已绑定 Kimi 大模型时随请求下发（BYOK），云端/本地均按此生成回应
   if (state.llmKey) {
@@ -1817,6 +1840,7 @@ async function sendMobileChat(rawText, source = 'text') {
   if (!text || state.mobileBusy) return;
   if (mobileChatInput) mobileChatInput.value = '';
   appendMobileMessage('user', text);
+  appendConversationTurn('user', text);
   setMobileBusy(true, source === 'voice' ? '识别完成' : '回应中');
   setAction('nod');
 
@@ -1830,9 +1854,17 @@ async function sendMobileChat(rawText, source = 'text') {
     reply = sceneReply(sceneConfig, text);
   }
 
+  if (result?.mode === 'cloud_llm') {
+    state.llmConnectionState = 'verified';
+  } else if (state.llmKey) {
+    state.llmConnectionState = 'failed';
+  }
+  updateLlmControls();
+
   if (!reply) reply = sceneReply(sceneConfig, text);
   const nextAction = extractReplyAction(result, sceneConfig.replyAction || sceneConfig.action || 'voice');
   appendMobileMessage('companion', reply);
+  appendConversationTurn('assistant', reply);
   lineEl.textContent = reply;
   setMobileBusy(false, state.dialogEnabled ? '播放中' : '已回应');
   if (state.dialogEnabled) {
@@ -1849,7 +1881,7 @@ function setInteractionScene(id, speak = false) {
   renderSceneControls();
   lineEl.textContent = sceneOpening(sceneConfig);
   setAction(sceneConfig.action || 'wave', { skipVoiceRequest: true, lineText: sceneOpening(sceneConfig) });
-  appendMobileMessage('companion', sceneOpening(sceneConfig));
+  resetConversationContext(sceneOpening(sceneConfig));
   setMobileHint(sceneConfig.name);
   if (speak && state.dialogEnabled) {
     speakCompanionText(sceneOpening(sceneConfig), sceneConfig.mood, sceneConfig.replyAction || 'voice');
@@ -2462,92 +2494,62 @@ function addModelArmPose(entry, side, upper = {}, fore = {}, hand = {}) {
 
 function applyModelNaturalBase(entry, t, breath, sway, pointerLag, weight = 1, includeArms = true) {
   const profile = currentMotionProfile();
-  const drift = Math.sin(t * 0.42 * profile.speed) * 0.012 * profile.sway * weight;
-  const settle = Math.sin(t * 1.18 * profile.speed + 0.7) * 0.006 * weight;
-
-  addBonePosition(entry, 'Hips', drift * 0.24, breath * 0.014 * weight, 0);
-  addBoneRotation(entry, 'Hips', -0.006 * weight + breath * 0.012 * weight, drift * 0.12, sway * 0.12 * weight);
-  addBoneRotation(entry, 'Spine', 0.022 * weight + breath * 0.24 * weight, -drift * 0.08, sway * 0.22 * weight);
-  addBoneRotation(entry, 'Spine01', 0.016 * weight + breath * 0.18 * weight, -drift * 0.05, sway * 0.16 * weight);
-  addBoneRotation(entry, 'Spine02', 0.01 * weight + breath * 0.1 * weight, -drift * 0.03, sway * 0.08 * weight);
-  addBoneRotation(entry, 'neck',
-    -state.pointerY * 0.03 * pointerLag * weight + settle * 0.42,
-    state.pointerX * 0.045 * pointerLag * weight,
-    -sway * 0.08 * weight
-  );
+  addBonePosition(entry, 'Hips', 0, breath * 0.018 * weight, 0);
+  addBoneRotation(entry, 'Hips', breath * 0.018 * weight, 0, sway * 0.18 * weight);
+  addBoneRotation(entry, 'Spine', 0.018 + breath * 0.32 * weight, 0, sway * 0.28 * weight);
+  addBoneRotation(entry, 'Spine01', 0.012 + breath * 0.24 * weight, 0, sway * 0.18 * weight);
+  addBoneRotation(entry, 'Spine02', 0.006 + breath * 0.14 * weight, 0, sway * 0.12 * weight);
+  addBoneRotation(entry, 'neck', -state.pointerY * 0.035 * pointerLag * weight, state.pointerX * 0.06 * pointerLag * weight, -sway * 0.12 * weight);
   addBoneRotation(entry, 'Head',
-    -state.pointerY * 0.068 * pointerLag * weight + Math.sin(t * 0.9 * profile.speed) * 0.01,
-    state.pointerX * 0.14 * pointerLag * weight + drift * 0.06,
-    -sway * 0.22 * weight
+    -state.pointerY * 0.08 * pointerLag * weight + Math.sin(t * 1.08 * profile.speed) * 0.01,
+    state.pointerX * 0.17 * pointerLag * weight,
+    -sway * 0.32 * weight
   );
-
   if (includeArms) {
-    const leftRelax = -1.12 + sway * 0.08 * weight + settle * 0.8;
-    const rightRelax = 1.12 + sway * 0.08 * weight - settle * 0.8;
-    addModelArmPose(entry, 'Left',
-      { shoulderZ: leftRelax, x: 0.78 + breath * 0.18, z: -0.12 + sway * 0.035 },
-      { x: 0.12 + settle * 0.5, z: -0.06 },
-      { x: -0.02, y: 0.01, z: -0.05 + settle * 0.5 }
-    );
-    addModelArmPose(entry, 'Right',
-      { shoulderZ: rightRelax, x: 0.78 + breath * 0.18, z: 0.12 + sway * 0.035 },
-      { x: 0.12 - settle * 0.5, z: 0.06 },
-      { x: -0.02, y: -0.01, z: 0.05 - settle * 0.5 }
-    );
+    addBoneRotation(entry, 'LeftShoulder', 0, 0, -1.34 + sway * 0.08 * weight);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, 1.34 + sway * 0.08 * weight);
+    addBoneRotation(entry, 'LeftArm', 1.16, 0.08, -0.28 + sway * 0.04 * weight);
+    addBoneRotation(entry, 'RightArm', 1.16, -0.08, 0.28 + sway * 0.04 * weight);
+    addBoneRotation(entry, 'LeftForeArm', 0.12, 0, -0.1);
+    addBoneRotation(entry, 'RightForeArm', 0.12, 0, 0.1);
   }
 }
 
 function applyModelLocomotionPose(entry, elapsed, isRun, profile, duration) {
-  const fade = modelActionFade(elapsed, duration, 0.18);
-  const cadence = (isRun ? 8.6 : 5.35) * profile.speed;
+  const intensity = (isRun ? 1.04 : 0.82) * profile.action;
+  const cadence = (isRun ? 6.6 : 4.2) * profile.speed;
+  const stride = (isRun ? 0.4 : 0.24) * intensity;
+  const knee = (isRun ? 0.48 : 0.3) * intensity;
+  const armSwing = (isRun ? 0.22 : 0.14) * intensity;
   const phase = elapsed * cadence;
-  const swing = cycleBalance(phase);
-  const counter = -swing;
-  const strideBeat = Math.sin(phase);
-  const landing = (1 - Math.cos(phase * 2)) * 0.5;
-  const leftLift = Math.max(0, Math.cos(phase));
-  const rightLift = Math.max(0, -Math.cos(phase));
-  const lateral = Math.cos(phase) * fade;
-  const intensity = (isRun ? 1.28 : 1.06) * profile.action;
-  const stride = (isRun ? 0.82 : 0.55) * intensity;
-  const knee = (isRun ? 0.95 : 0.66) * intensity;
-  const armSwing = (isRun ? 0.72 : 0.46) * intensity;
-  const lean = (isRun ? 0.15 : 0.07) * fade;
-  const sideShift = lateral * (isRun ? 0.036 : 0.024);
-  const legSide = (isRun ? 0.16 : 0.1) * intensity;
+  const left = cycleBalance(phase);
+  const right = -left;
+  const bob = Math.abs(Math.sin(phase));
+  const heel = Math.cos(phase);
+  const fade = smoothStep01(actionEnvelope(elapsed, duration, 0.22));
 
-  modelLayer.position.x += sideShift;
-  modelLayer.position.y += landing * (isRun ? 0.026 : 0.014) * fade;
-  modelLayer.rotation.y += strideBeat * (isRun ? 0.052 : 0.034) * fade;
-  modelLayer.rotation.z += -lateral * (isRun ? 0.018 : 0.012);
+  addBonePosition(entry, 'Hips', 0, bob * (isRun ? 0.026 : 0.014) * fade, 0);
+  addBoneRotation(entry, 'Hips', -0.018 * fade, 0, -left * 0.026 * fade);
+  addBoneRotation(entry, 'Spine', 0.026 * fade, 0, left * 0.032 * fade);
+  addBoneRotation(entry, 'Spine01', 0.016 * fade, 0, left * 0.022 * fade);
+  addBoneRotation(entry, 'Spine02', 0.01 * fade, 0, left * 0.012 * fade);
+  addBoneRotation(entry, 'Head', bob * 0.012 * fade, -left * 0.012 * fade, -left * 0.012 * fade);
 
-  addBonePosition(entry, 'Hips', -sideShift * 0.36, landing * (isRun ? 0.05 : 0.028) * fade, 0);
-  addBoneRotation(entry, 'Hips', -lean + landing * 0.018 * fade, lateral * 0.032, -lateral * 0.062);
-  addBoneRotation(entry, 'Spine', lean * 0.68, -strideBeat * 0.02 * fade, lateral * 0.058);
-  addBoneRotation(entry, 'Spine01', lean * 0.48, -strideBeat * 0.014 * fade, lateral * 0.038);
-  addBoneRotation(entry, 'Spine02', lean * 0.28, strideBeat * 0.01 * fade, -lateral * 0.018);
-  addBoneRotation(entry, 'neck', -lean * 0.22, -lateral * 0.018, -lateral * 0.012);
-  addBoneRotation(entry, 'Head', lean * 0.25 - landing * 0.015 * fade, -lateral * 0.026, -lateral * 0.02);
+  addBoneRotation(entry, 'LeftUpLeg', left * stride * fade, 0, 0.022 * fade);
+  addBoneRotation(entry, 'RightUpLeg', right * stride * fade, 0, -0.022 * fade);
+  addBoneRotation(entry, 'LeftLeg', Math.max(0, -left) * knee * fade, 0, 0);
+  addBoneRotation(entry, 'RightLeg', Math.max(0, -right) * knee * fade, 0, 0);
+  addBoneRotation(entry, 'LeftFoot', (-left * 0.075 + Math.max(0, heel) * 0.055) * fade, 0, 0);
+  addBoneRotation(entry, 'RightFoot', (-right * 0.075 + Math.max(0, -heel) * 0.055) * fade, 0, 0);
+  addBoneRotation(entry, 'LeftToeBase', Math.max(0, -heel) * 0.045 * fade, 0, 0);
+  addBoneRotation(entry, 'RightToeBase', Math.max(0, heel) * 0.045 * fade, 0, 0);
 
-  addBoneRotation(entry, 'LeftUpLeg', swing * stride * fade - lean * 0.24, -leftLift * 0.055 * fade, 0.04 * fade - lateral * legSide);
-  addBoneRotation(entry, 'RightUpLeg', counter * stride * fade - lean * 0.24, rightLift * 0.055 * fade, -0.04 * fade + lateral * legSide);
-  addBoneRotation(entry, 'LeftLeg', (leftLift * knee + landing * 0.1) * fade, 0, -leftLift * 0.035 * fade);
-  addBoneRotation(entry, 'RightLeg', (rightLift * knee + landing * 0.1) * fade, 0, rightLift * 0.035 * fade);
-  addBoneRotation(entry, 'LeftFoot', (-swing * (isRun ? 0.24 : 0.17) - leftLift * 0.12 + Math.max(0, -swing) * 0.1) * fade, 0, (-0.025 + lateral * 0.08) * fade);
-  addBoneRotation(entry, 'RightFoot', (-counter * (isRun ? 0.24 : 0.17) - rightLift * 0.12 + Math.max(0, -counter) * 0.1) * fade, 0, (0.025 - lateral * 0.08) * fade);
-  addBoneRotation(entry, 'LeftToeBase', Math.max(0, -swing) * 0.12 * fade, 0, 0);
-  addBoneRotation(entry, 'RightToeBase', Math.max(0, -counter) * 0.12 * fade, 0, 0);
-
-  addModelArmPose(entry, 'Left',
-    { shoulderZ: -0.04 * fade - swing * 0.09 * fade, x: -swing * armSwing * fade - lean * 0.24, y: 0.04 * fade, z: counter * 0.2 * fade },
-    { x: (0.14 + Math.max(0, swing) * 0.22) * fade, z: -0.07 * fade + counter * 0.09 * fade },
-    { x: -0.025 * fade, y: 0.015 * fade, z: -swing * 0.085 * fade }
-  );
-  addModelArmPose(entry, 'Right',
-    { shoulderZ: 0.04 * fade + counter * 0.09 * fade, x: -counter * armSwing * fade - lean * 0.24, y: -0.04 * fade, z: swing * 0.2 * fade },
-    { x: (0.14 + Math.max(0, counter) * 0.22) * fade, z: 0.07 * fade + swing * 0.09 * fade },
-    { x: -0.025 * fade, y: -0.015 * fade, z: counter * 0.085 * fade }
-  );
+  addBoneRotation(entry, 'LeftShoulder', 0, 0, -left * 0.018 * fade);
+  addBoneRotation(entry, 'RightShoulder', 0, 0, right * 0.018 * fade);
+  addBoneRotation(entry, 'LeftArm', -left * armSwing * fade, 0.018 * fade, right * 0.036 * fade);
+  addBoneRotation(entry, 'RightArm', -right * armSwing * fade, -0.018 * fade, left * 0.036 * fade);
+  addBoneRotation(entry, 'LeftForeArm', Math.max(0, left) * 0.065 * fade, 0, -0.026 * fade);
+  addBoneRotation(entry, 'RightForeArm', Math.max(0, right) * 0.065 * fade, 0, 0.026 * fade);
 }
 
 function applyModelWavePose(entry, elapsed, profile, duration) {
@@ -2758,75 +2760,98 @@ function updateModelPose(t, delta = 0) {
   const pointerLag = Math.max(0, 1 - (t - state.lastPointerMovedAt) / 3);
 
   applyModelFrameScale(modelFrameScaleMultiplier(), breath * 0.2);
-  modelLayer.rotation.x = 0;
   modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04 + Math.sin(t * 0.32) * 0.008 * profile.gaze;
   modelLayer.rotation.z = sway * 0.08;
-
-  if (runtimeModelActions.has(state.action)) {
-    ensureModelAnimations(state.activePersona, [state.action]);
-  }
-
-  if (runtimeModelActions.has(state.action) && entry.actions[state.action]) {
-    const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
-    const duration = modelNativeActionDuration(state.action, profile, voiceActive);
-    playModelAnimation(entry, state.action);
-    const actionSpeed = state.action === 'idle' ? 0.52 : profile.action;
-    entry.mixer.update(delta * actionSpeed);
-    if (state.action === 'idle') {
-      addBoneRotation(entry, 'LeftUpLeg', 0, 0, -0.022);
-      addBoneRotation(entry, 'RightUpLeg', 0, 0, 0.022);
-      addBoneRotation(entry, 'LeftLeg', -0.008, 0, 0.006);
-      addBoneRotation(entry, 'RightLeg', -0.008, 0, -0.006);
-    }
-    applyNativeActionPresentation(entry, state.action, t, elapsed, profile, duration, voiceActive);
-    return;
-  }
 
   resetModelForProceduralPose(entry);
   applyModelNaturalBase(entry, t, breath, sway, pointerLag, state.action === 'voice' ? 0.72 : 1, true);
 
   if (state.action === 'walk' || state.action === 'run') {
     const isRun = state.action === 'run';
-    const duration = (isRun ? 4.8 : 5.8) / profile.action;
-    const bob = Math.abs(Math.sin(elapsed * (isRun ? 8.2 : 5.25) * profile.speed));
-    applyModelFrameScale(1, bob * (isRun ? 0.024 : 0.014) * actionEnvelope(elapsed, duration, 0.18));
+    const duration = (isRun ? 3.2 : 4.2) / profile.action;
+    const bob = Math.abs(Math.sin(elapsed * (isRun ? 7.4 : 4.7) * profile.speed));
+    applyModelFrameScale(1, bob * (isRun ? 0.017 : 0.01) * actionEnvelope(elapsed, duration, 0.18));
     applyModelLocomotionPose(entry, elapsed, isRun, profile, duration);
     finishActionIfNeeded(elapsed, duration);
     return;
   }
 
   if (state.action === 'wave') {
-    const duration = 4.05 / profile.action;
-    applyModelWavePose(entry, elapsed, profile, duration);
+    const duration = 2.7 / profile.action;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = smoothStep01(actionEnvelope(elapsed, duration, 0.24));
+    const raise = smoothStep01(clamp01(p * 1.45));
+    const flutter = Math.sin(elapsed * 6.8 * profile.speed) * 0.095 * envelope;
+    addBoneRotation(entry, 'Hips', 0, 0, 0.018 * envelope);
+    addBoneRotation(entry, 'Spine', 0.012 * envelope, 0, -0.026 * envelope);
+    addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.036 * envelope);
+    addBoneRotation(entry, 'Spine02', 0.008 * envelope, 0, -0.02 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0.022 * raise, -0.24 * raise);
+    addBoneRotation(entry, 'RightArm', -1.72 * raise, -0.025 * raise, -0.78 * raise);
+    addBoneRotation(entry, 'RightForeArm', -0.34 * raise, 0.02 * raise, -0.34 * raise + flutter);
+    addBoneRotation(entry, 'RightHand', 0, 0, flutter * 0.48);
+    addBoneRotation(entry, 'LeftArm', 0.024 * envelope, 0.02 * envelope, 0.045 * envelope);
+    addBoneRotation(entry, 'Head', -0.008 * envelope, 0, 0.028 * envelope);
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'nod') {
-    const duration = 3.1 / profile.action;
-    applyModelNodPose(entry, elapsed, profile, duration);
+    const duration = 1.8 / profile.action;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = actionEnvelope(elapsed, duration, 0.22);
+    const nod = Math.sin(p * Math.PI * 3.5) * 0.13 * envelope;
+    addBoneRotation(entry, 'Spine', -0.012 * envelope, 0, 0);
+    addBoneRotation(entry, 'neck', nod * 0.38, 0, 0);
+    addBoneRotation(entry, 'Head', nod, 0, 0);
+    addBoneRotation(entry, 'LeftArm', 0.02 * envelope, 0, 0.035 * envelope);
+    addBoneRotation(entry, 'RightArm', 0.02 * envelope, 0, -0.035 * envelope);
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'turn') {
-    const duration = 2.45 / profile.action;
+    const duration = 2.15 / profile.action;
     const p = Math.min(elapsed / duration, 1);
     modelLayer.rotation.y = state.dragYaw + easeInOut(p) * Math.PI * 2;
-    const lift = Math.sin(p * Math.PI * 2) * 0.018 * modelActionFade(elapsed, duration, 0.14);
-    addBonePosition(entry, 'Hips', 0, Math.abs(lift), 0);
-    addBoneRotation(entry, 'Spine', 0.02 * Math.sin(p * Math.PI), 0, 0);
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'heart') {
-    const duration = 3.25 / profile.action;
-    applyModelHeartPose(entry, elapsed, profile, duration);
+    const duration = 2.45 / profile.action;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = actionEnvelope(elapsed, duration, 0.2);
+    const pulse = Math.sin(p * Math.PI * 2) * 0.035 * envelope;
+    addBonePosition(entry, 'Hips', 0, 0.012 * envelope, 0);
+    addBoneRotation(entry, 'Spine', 0.045 * envelope, 0, pulse);
+    addBoneRotation(entry, 'Spine01', 0.035 * envelope, 0, pulse * 0.6);
+    addBoneRotation(entry, 'LeftShoulder', 0, 0, 0.1 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.1 * envelope);
+    addBoneRotation(entry, 'LeftArm', -0.22 * envelope, 0.12 * envelope, 0.46 * envelope);
+    addBoneRotation(entry, 'RightArm', -0.22 * envelope, -0.12 * envelope, -0.46 * envelope);
+    addBoneRotation(entry, 'LeftForeArm', -0.16 * envelope, 0, -0.48 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.16 * envelope, 0, 0.48 * envelope);
+    addBoneRotation(entry, 'Head', -0.018 * envelope, 0, -pulse);
+    rig.heart.visible = true;
+    rig.heart.position.y = 1.7 + easeOutCubic(p) * 0.34;
+    rig.heart.scale.setScalar(0.2 * envelope + 0.001);
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'voice') {
     const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
-    const duration = (voiceActive ? 4.8 : 2.8) / profile.action;
-    applyModelVoicePose(entry, t, elapsed, profile, duration, voiceActive);
+    const duration = (voiceActive ? 4.2 : 2.1) / profile.action;
+    const p = Math.min(elapsed / duration, 1);
+    const envelope = voiceActive ? clamp01(p / 0.22) : actionEnvelope(elapsed, duration, 0.24);
+    const talk = state.speaking ? Math.sin(t * 8.2) * 0.018 : 0;
+    const handBeat = Math.sin(t * 3.6 * profile.speed) * 0.07 * envelope;
+    addBoneRotation(entry, 'Hips', 0, 0, 0.012 * envelope);
+    addBoneRotation(entry, 'Spine', 0.018 * envelope, 0, -0.02 * envelope);
+    addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.025 * envelope);
+    addBoneRotation(entry, 'neck', talk * 0.45, 0, 0);
+    addBoneRotation(entry, 'Head', talk, Math.sin(t * 2.2) * 0.018 * envelope, 0.012 * envelope);
+    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.06 * envelope);
+    addBoneRotation(entry, 'RightArm', -0.16 * envelope + handBeat * 0.35, -0.05 * envelope, -0.28 * envelope);
+    addBoneRotation(entry, 'RightForeArm', -0.08 * envelope, 0, -0.22 * envelope + handBeat);
+    addBoneRotation(entry, 'LeftArm', 0.04 * envelope, 0.02 * envelope, 0.08 * envelope);
     if (!voiceActive) finishActionIfNeeded(elapsed, duration);
   }
 }
@@ -3012,8 +3037,8 @@ function resize() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
-  camera.position.z = mobile ? 6.7 : 6.45;
-  camera.position.y = mobile ? 0.26 : 0.2;
+  camera.position.z = mobile ? 7.55 : 6.85;
+  camera.position.y = mobile ? 0.3 : 0.22;
   avatar.position.set(0, mobile ? 0.34 : 0.3, 0);
   avatar.scale.setScalar(persona.scale * (mobile ? 0.82 : 1.02));
   modelLayer.position.set(0, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
@@ -3220,18 +3245,25 @@ function setLlmPanelOpen(open) {
 
 function updateLlmControls() {
   if (!llmButton) return;
-  llmButton.textContent = state.llmKey ? '模型✓' : '模型';
-  llmButton.classList.toggle('active', !!state.llmKey);
+  const verified = state.llmConnectionState === 'verified';
+  const failed = state.llmConnectionState === 'failed';
+  llmButton.textContent = failed ? '模型!' : state.llmKey || verified ? '模型✓' : '模型';
+  llmButton.classList.toggle('active', !!state.llmKey || verified);
   llmButton.setAttribute('aria-expanded', state.llmPanelOpen ? 'true' : 'false');
-  llmButton.title = state.llmKey
-    ? `已绑定 Kimi（${state.llmModel}），对话按你的话实时生成`
-    : '绑定 Kimi 大模型：人物按你的话实时生成回应';
+  llmButton.title = failed
+    ? 'Key 已保存，但最近一次请求未成功，当前已回退到内置回复'
+    : verified
+      ? `Kimi（${state.llmModel}）已通过真实对话验证`
+      : state.llmKey
+        ? `已保存 Kimi（${state.llmModel}），发送一条消息后验证`
+        : '绑定 Kimi 大模型：人物按你的话实时生成回应';
   renderLlmPanel();
 }
 
 function saveLlmBinding(key, model) {
   state.llmKey = String(key || '').trim();
   state.llmModel = model || 'kimi-k2.5';
+  state.llmConnectionState = state.llmKey ? 'saved' : 'idle';
   if (state.llmKey) {
     storeValue('qiban_llm_key', state.llmKey);
     storeValue('qiban_llm_model', state.llmModel);
@@ -3293,7 +3325,13 @@ function renderLlmPanel() {
 
   const status = document.createElement('div');
   status.className = 'llm-status';
-  status.textContent = state.llmKey ? `当前已绑定 ${state.llmModel}` : '当前未绑定：使用内置模板回复';
+  status.textContent = state.llmConnectionState === 'failed'
+    ? 'Key 已保存，但最近一次请求失败：当前使用内置回复'
+    : state.llmConnectionState === 'verified'
+      ? `${state.llmModel} 已通过真实对话验证`
+      : state.llmKey
+        ? `已保存 ${state.llmModel}，发送一条消息后验证`
+        : '当前未绑定：使用内置模板回复';
 
   const pasteBtn = document.createElement('button');
   pasteBtn.className = 'voice-option';

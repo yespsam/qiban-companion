@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build:model:male": "node tools/build-browser-model.mjs male"
+    "build:model:male": "node tools/build-browser-model.mjs male",
+    "test:chat": "node --test netlify/functions/chat.test.mjs"
   },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0"
