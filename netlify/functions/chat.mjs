@@ -178,12 +178,30 @@ function pickReply(list, text) {
 }
 
 // ---------------------------------------------------------------- 真实大模型通道
-// 配置任一 Key 即启用：LLM_API_KEY 或 MOONSHOT_API_KEY（Netlify 环境变量里设置）。
-// 接口为 OpenAI Chat Completions 兼容协议，可指向 Kimi/DeepSeek/OpenAI 等。
+// 两种绑定方式（任选）：
+//   1) 站点环境变量：LLM_API_KEY 或 MOONSHOT_API_KEY（全站生效）
+//   2) 用户在应用「模型」面板粘贴自己的 Key：随请求 payload.llm_key 传入（BYOK）
+// 接口为 OpenAI Chat Completions 兼容协议；base_url 只允许服务端环境变量控制，
+// 模型名走白名单，防止本函数被滥用为任意代理。
 const LLM_API_KEY = process.env.LLM_API_KEY || process.env.MOONSHOT_API_KEY || '';
 const LLM_BASE_URL = (process.env.LLM_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
-const LLM_MODEL = process.env.LLM_MODEL || 'moonshot-v1-8k';
+const LLM_DEFAULT_MODEL = process.env.LLM_MODEL || 'kimi-k2.5';
 const LLM_TIMEOUT_MS = 12000;
+const LLM_MODEL_WHITELIST = new Set([
+  'kimi-k2.5', 'kimi-k2.6',
+  'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'
+]);
+
+function sanitizeLlmKey(value) {
+  const key = String(value || '').trim();
+  if (!key || key.length > 200 || !key.startsWith('sk-')) return '';
+  return key;
+}
+
+function sanitizeLlmModel(value) {
+  const model = String(value || '').trim();
+  return LLM_MODEL_WHITELIST.has(model) ? model : LLM_DEFAULT_MODEL;
+}
 
 const COMPANION_PROFILE = {
   female: { name: '小栖', desc: '女性人格，软糯亲昵，自称「人家」或「我」' },
@@ -232,8 +250,8 @@ function parseLLMReply(raw) {
   };
 }
 
-async function callLLM(text, kind) {
-  if (!LLM_API_KEY) return null;
+async function callLLM(text, kind, apiKey, model) {
+  if (!apiKey) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
@@ -241,10 +259,10 @@ async function callLLM(text, kind) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${LLM_API_KEY}`
+        Authorization: `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: LLM_MODEL,
+        model,
         messages: buildLLMMessages(text, kind),
         temperature: 0.78,
         max_tokens: 400,
@@ -284,8 +302,12 @@ export const handler = async (event) => {
   const sceneId = pickScene(text, String(payload.scene || 'daily'));
   const scene = sceneLibrary[sceneId] || sceneLibrary.daily;
 
-  // 优先走真实大模型：按主人的话生成回应；未配置 Key 或调用失败落回罐头库。
-  const llm = await callLLM(text, kind);
+  // 优先走真实大模型：BYOK（请求自带 Key）优先，其次站点环境变量 Key；
+  // 都没有或调用失败落回罐头库。
+  const llmKey = sanitizeLlmKey(payload.llm_key) || LLM_API_KEY;
+  const llmModel = sanitizeLlmModel(payload.llm_model);
+  const llmBound = Boolean(sanitizeLlmKey(payload.llm_key));
+  const llm = await callLLM(text, kind, llmKey, llmModel);
   if (llm) {
     return jsonResponse({
       text: llm.reply,
@@ -300,7 +322,8 @@ export const handler = async (event) => {
       ],
       persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
       scene: sceneId,
-      mode: 'cloud_llm'
+      mode: 'cloud_llm',
+      llm: { bound: llmBound, model: llmModel }
     });
   }
 
@@ -322,6 +345,7 @@ export const handler = async (event) => {
     ],
     persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
     scene: sceneId,
-    mode: 'cloud_scene_reply'
+    mode: 'cloud_scene_reply',
+    llm: { bound: llmBound, model: llmModel }
   });
 };

@@ -22,7 +22,7 @@ from core.logging_utils import get_logger
 log = get_logger(__name__)
 
 _DEFAULT_BASE_URL = "https://api.moonshot.cn/v1"
-_DEFAULT_MODEL = "moonshot-v1-8k"
+_DEFAULT_MODEL = "kimi-k2.5"  # 2026 现款；moonshot-v1 系列逐步下线
 
 
 def _env(*names: str) -> str:

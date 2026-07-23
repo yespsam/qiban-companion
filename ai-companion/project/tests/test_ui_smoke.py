@@ -371,3 +371,53 @@ def test_console_state_aggregate(client):
     assert data["persona"]["id"] == "female_companion"
     assert data["show_thinking"] is True
     assert "emotion" in data
+
+
+# ------------------------------------------------------------------ BYOK 绑定
+def test_chat_byok_uses_user_key(client, monkeypatch):
+    """请求自带 sk- Key 时，本轮走 BYOK 云端后端并按指定模型生成。"""
+    from core.llm.base import GenerateResult
+    from core.llm.openai_compat_backend import OpenAICompatBackend
+
+    called = {}
+
+    def fake_generate(self, messages, temperature=0.7, max_tokens=1024):
+        called["model"] = self.model
+        called["key"] = self.api_key
+        return GenerateResult(
+            text="<think>他累了，先心疼一下。</think>辛苦啦，先靠着我歇会儿。",
+            reasoning="", model="openai:test", tokens=9)
+
+    monkeypatch.setattr(OpenAICompatBackend, "generate", fake_generate)
+    resp = client.post("/api/chat", json={
+        "text": "今天好累", "llm_key": "sk-user-byok", "llm_model": "kimi-k2.6"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "先靠着我歇会儿" in data["text"]
+    assert "心疼" in data["thinking"]
+    assert called == {"model": "kimi-k2.6", "key": "sk-user-byok"}
+
+
+def test_chat_byok_model_whitelist(client, monkeypatch):
+    """白名单外的模型名回落默认 kimi-k2.5。"""
+    from core.llm.base import GenerateResult
+    from core.llm.openai_compat_backend import OpenAICompatBackend
+
+    called = {}
+
+    def fake_generate(self, messages, temperature=0.7, max_tokens=1024):
+        called["model"] = self.model
+        return GenerateResult(text="嗯嗯。", reasoning="", model="openai:test", tokens=3)
+
+    monkeypatch.setattr(OpenAICompatBackend, "generate", fake_generate)
+    resp = client.post("/api/chat", json={
+        "text": "在吗", "llm_key": "sk-user-byok", "llm_model": "gpt-99-ultra"})
+    assert resp.status_code == 200
+    assert called["model"] == "kimi-k2.5"
+
+
+def test_chat_byok_bad_key_ignored(client):
+    """非 sk- 前缀的 Key 直接忽略，走主引擎（mock）。"""
+    resp = client.post("/api/chat", json={"text": "在吗", "llm_key": "not-a-key"})
+    assert resp.status_code == 200
+    assert resp.json()["text"]

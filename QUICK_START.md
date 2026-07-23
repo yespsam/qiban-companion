@@ -61,24 +61,16 @@ $env:QIBAN_DIALOG="0"; $env:QIBAN_VOICE="0"; .\start-qiban.ps1
 
 ### 让人物真正听懂你说话（重要）
 
-默认对话大脑是**云端大模型**：人物会按你说的每句话实时生成回应（带三拍内心思考），不再是固定模板。启动前设置一个 Key 即可（Kimi / DeepSeek / OpenAI 任何 OpenAI 兼容接口都行）：
+**最简单的方式——应用内绑定 Kimi**：打开右下角控制条 →「模型」→ 粘贴 API Key → 保存绑定。Key 只存在你自己浏览器里，随对话请求加密传输，之后人物就按你说的每句话实时生成回应（不再走模板）。模型可选 kimi-k2.5（推荐）/ kimi-k2.6（更强）/ moonshot-v1-8k（经典便宜）。
 
-```bash
-# macOS / Linux
-export QIBAN_LLM_API_KEY="你的Key"          # 必填
-export QIBAN_LLM_BASE_URL="https://api.moonshot.cn/v1"   # 可选，默认 Kimi
-export QIBAN_LLM_MODEL="moonshot-v1-8k"                  # 可选
-bash start-qiban.sh
-```
+Key 获取：[platform.moonshot.cn](https://platform.moonshot.cn) 注册 → 充值几块 → 控制台创建 API Key（sk- 开头）。
 
-```powershell
-# Windows PowerShell
-$env:QIBAN_LLM_API_KEY="你的Key"; .\start-qiban.ps1
-```
+其他两种方式：
 
-不配 Key 也能用——会自动回退到内置罐头模板（离线兜底），只是回应不按你的话生成。想完全离线用本地模型，把 `ai-companion/project/config/settings.yaml` 的 `llm_backend` 改为 `llamacpp` 或 `ollama`。
+- **整站环境变量**（本地启动）：`export QIBAN_LLM_API_KEY="你的Key"` 再跑启动脚本；Netlify 版在站点 **Site configuration → Environment variables** 加 `LLM_API_KEY`。
+- **本地模型**（完全离线）：`ai-companion/project/config/settings.yaml` 的 `llm_backend` 改为 `llamacpp` 或 `ollama`。
 
-线上 Netlify 版同理：在 Netlify 站点的 **Site configuration → Environment variables** 里加 `LLM_API_KEY`（或 `MOONSHOT_API_KEY`），云端对话即切换为大模型生成。
+不配 Key 也能用——自动回退内置模板（离线兜底），只是回应不按你的话生成。
 
 压缩包不包含模型权重、历史对话数据、虚拟环境和开发日志。对外名字已经统一为「栖伴」，默认角色是「小栖」和「栖安」。
 

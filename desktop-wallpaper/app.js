@@ -13,6 +13,8 @@ const voiceButton = document.getElementById('voice-btn');
 const builderButton = document.getElementById('builder-btn');
 const voicePanel = document.getElementById('voice-panel');
 const builderPanel = document.getElementById('builder-panel');
+const llmButton = document.getElementById('llm-btn');
+const llmPanel = document.getElementById('llm-panel');
 const mobileShell = document.getElementById('mobile-shell');
 const sceneStrip = document.getElementById('scene-strip');
 const mobileChat = document.getElementById('mobile-chat');
@@ -577,6 +579,10 @@ const state = {
   builderStep: 'persona',
   builderTimers: [],
   voicePanelOpen: false,
+  llmPanelOpen: false,
+  // BYOK：应用内绑定的 Kimi 大模型 Key（仅存本机 localStorage，随对话请求下发）
+  llmKey: storedValue('qiban_llm_key') || '',
+  llmModel: storedValue('qiban_llm_model') || 'kimi-k2.5',
   interactionCount: 0,
   voiceLoading: false,
   speaking: false,
@@ -1454,6 +1460,7 @@ function setBuilderOpen(open) {
     builderButton.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
   if (open && state.voicePanelOpen) setVoicePanelOpen(false);
+  if (open && state.llmPanelOpen) setLlmPanelOpen(false);
   renderBuilderPanel();
 }
 
@@ -1774,7 +1781,7 @@ function extractReplyAction(body, fallback) {
 }
 
 function companionChatPayload(text) {
-  return {
+  const payload = {
     text,
     persona: personas[state.activePersona].id,
     persona_short: state.activePersona,
@@ -1783,6 +1790,12 @@ function companionChatPayload(text) {
     mood: currentInteractionScene().mood,
     archetype: state.activeVoiceArchetype
   };
+  // 已绑定 Kimi 大模型时随请求下发（BYOK），云端/本地均按此生成回应
+  if (state.llmKey) {
+    payload.llm_key = state.llmKey;
+    payload.llm_model = state.llmModel;
+  }
+  return payload;
 }
 
 function fetchCompanionReply(text) {
@@ -3104,6 +3117,9 @@ function setDockOpen(open) {
   if (!open && state.voicePanelOpen) {
     setVoicePanelOpen(false);
   }
+  if (!open && state.llmPanelOpen) {
+    setLlmPanelOpen(false);
+  }
   if (!open && state.builderOpen) {
     state.builderOpen = false;
     if (builderPanel) builderPanel.hidden = true;
@@ -3173,8 +3189,116 @@ function renderVoicePanel() {
 function setVoicePanelOpen(open) {
   if (open && !state.dockOpen) setDockOpen(true);
   if (open && state.builderOpen) setBuilderOpen(false);
+  if (open && state.llmPanelOpen) setLlmPanelOpen(false);
   state.voicePanelOpen = open;
   updateVoiceControls();
+}
+
+// ---------------------------------------------------------------- 大模型绑定（BYOK）
+function setLlmPanelOpen(open) {
+  if (open && !state.dockOpen) setDockOpen(true);
+  if (open && state.builderOpen) setBuilderOpen(false);
+  if (open && state.voicePanelOpen) setVoicePanelOpen(false);
+  state.llmPanelOpen = open;
+  updateLlmControls();
+}
+
+function updateLlmControls() {
+  if (!llmButton) return;
+  llmButton.textContent = state.llmKey ? '模型✓' : '模型';
+  llmButton.classList.toggle('active', !!state.llmKey);
+  llmButton.setAttribute('aria-expanded', state.llmPanelOpen ? 'true' : 'false');
+  llmButton.title = state.llmKey
+    ? `已绑定 Kimi（${state.llmModel}），对话按你的话实时生成`
+    : '绑定 Kimi 大模型：人物按你的话实时生成回应';
+  renderLlmPanel();
+}
+
+function saveLlmBinding(key, model) {
+  state.llmKey = String(key || '').trim();
+  state.llmModel = model || 'kimi-k2.5';
+  if (state.llmKey) {
+    storeValue('qiban_llm_key', state.llmKey);
+    storeValue('qiban_llm_model', state.llmModel);
+  } else {
+    storeValue('qiban_llm_key', '');
+  }
+  updateLlmControls();
+}
+
+function renderLlmPanel() {
+  if (!llmPanel) return;
+  llmPanel.hidden = !state.llmPanelOpen;
+  if (!state.llmPanelOpen) return;
+  llmPanel.textContent = '';
+
+  const title = document.createElement('div');
+  title.className = 'llm-title';
+  title.textContent = '绑定 Kimi 大模型';
+  llmPanel.appendChild(title);
+
+  const hint = document.createElement('div');
+  hint.className = 'llm-hint';
+  hint.textContent = '绑定后人物按你说的每句话实时生成回应（不再走模板）。Key 只存在本机浏览器，随对话请求加密传输。';
+  llmPanel.appendChild(hint);
+
+  const keyInput = document.createElement('input');
+  keyInput.className = 'llm-input';
+  keyInput.type = 'password';
+  keyInput.placeholder = 'sk-……（platform.moonshot.cn 控制台获取）';
+  keyInput.value = state.llmKey || '';
+  keyInput.autocomplete = 'off';
+  llmPanel.appendChild(keyInput);
+
+  const modelSelect = document.createElement('select');
+  modelSelect.className = 'llm-input';
+  [
+    ['kimi-k2.5', 'kimi-k2.5（推荐·均衡）'],
+    ['kimi-k2.6', 'kimi-k2.6（旗舰·更强）'],
+    ['moonshot-v1-8k', 'moonshot-v1-8k（经典·便宜）']
+  ].forEach(([value, label]) => {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    modelSelect.appendChild(opt);
+  });
+  modelSelect.value = state.llmModel || 'kimi-k2.5';
+  llmPanel.appendChild(modelSelect);
+
+  const row = document.createElement('div');
+  row.className = 'llm-row';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'voice-option llm-save';
+  saveBtn.type = 'button';
+  saveBtn.textContent = '保存绑定';
+  saveBtn.addEventListener('click', () => {
+    const key = keyInput.value.trim();
+    if (key && !key.startsWith('sk-')) {
+      status.textContent = 'Key 格式不对：应以 sk- 开头';
+      return;
+    }
+    saveLlmBinding(key, modelSelect.value);
+    status.textContent = key
+      ? `已绑定 ${modelSelect.value}，下一轮对话生效`
+      : '已清除绑定，回到内置模板';
+  });
+  const clearBtn = document.createElement('button');
+  clearBtn.className = 'voice-option';
+  clearBtn.type = 'button';
+  clearBtn.textContent = '清除';
+  clearBtn.addEventListener('click', () => {
+    keyInput.value = '';
+    saveLlmBinding('', modelSelect.value);
+    status.textContent = '已清除绑定，回到内置模板';
+  });
+  row.appendChild(saveBtn);
+  row.appendChild(clearBtn);
+  llmPanel.appendChild(row);
+
+  const status = document.createElement('div');
+  status.className = 'llm-status';
+  status.textContent = state.llmKey ? `当前已绑定 ${state.llmModel}` : '当前未绑定：使用内置模板回复';
+  llmPanel.appendChild(status);
 }
 
 function loadVoiceResources() {
@@ -3643,6 +3767,13 @@ if (builderButton) {
     event.stopPropagation();
     setBuilderOpen(!state.builderOpen);
   });
+}
+if (llmButton) {
+  llmButton.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setLlmPanelOpen(!state.llmPanelOpen);
+  });
+  updateLlmControls();
 }
 if (voicePanel) {
   voicePanel.addEventListener('click', (event) => event.stopPropagation());

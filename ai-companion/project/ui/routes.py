@@ -151,17 +151,65 @@ def select_relationship(request: Request, payload: dict = Body(...)):
 
 
 # ---------------------------------------------------------------------- 聊天
+_LLM_MODEL_WHITELIST = {
+    "kimi-k2.5", "kimi-k2.6",
+    "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k",
+}
+
+
+def _sanitize_llm_key(value) -> str:
+    """BYOK Key 轻量校验：sk- 前缀、长度上限，其余交给上游报错。"""
+    key = str(value or "").strip()
+    if not key or len(key) > 200 or not key.startswith("sk-"):
+        return ""
+    return key
+
+
+def _byok_backend(request, api_key: str, model: str):
+    """按 (key, model) 缓存 BYOK 云端后端，避免每轮对话重建。"""
+    from core.llm.openai_compat_backend import OpenAICompatBackend
+
+    cache = getattr(request.app.state, "byok_backends", None)
+    if cache is None:
+        cache = {}
+        request.app.state.byok_backends = cache
+    cache_key = (api_key, model)
+    if cache_key not in cache:
+        cache[cache_key] = OpenAICompatBackend(api_key=api_key, model=model or None)
+    return cache[cache_key]
+
+
 @router.post("/api/chat")
 async def chat(request: Request, payload: dict = Body(...)):
-    """POST /api/chat → {text} → ChatResult(JSON)"""
+    """POST /api/chat → {text, llm_key?, llm_model?} → ChatResult(JSON)
+
+    请求自带 llm_key（BYOK，应用「模型」面板绑定 Kimi 后下发）时，
+    本轮用专属云端后端生成——记忆/情绪/人格与主引擎共享，体验连续。
+    """
     st = _state(request)
     if st.engine is None:
         return _err(503, "对话引擎不可用", detail=st.engine_error)
     text = str(payload.get("text") or "").strip()
     if not text:
         return _err(400, "消息不能为空")
+    engine = st.engine
+    llm_key = _sanitize_llm_key(payload.get("llm_key"))
+    if llm_key:
+        from core.engine import CompanionEngine
+
+        raw_model = str(payload.get("llm_model") or "").strip()
+        model = raw_model if raw_model in _LLM_MODEL_WHITELIST else ""
+        engine = CompanionEngine(
+            st.settings,
+            _byok_backend(request, llm_key, model),
+            st.engine.persona_manager,
+            st.engine.memory,
+            st.engine.emotion,
+            intent_router=st.engine.intent_router,
+            concern_tracker=st.engine.concern_tracker,
+        )
     try:
-        result = await run_in_threadpool(st.engine.chat, text)
+        result = await run_in_threadpool(engine.chat, text)
     except Exception as exc:
         return _err(500, f"对话失败：{exc}")
     return jsonable_encoder(result)

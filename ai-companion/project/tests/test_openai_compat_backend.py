@@ -129,7 +129,7 @@ def test_env_fallback_openai_vars(monkeypatch):
 def test_default_base_url_and_model(monkeypatch):
     backend = _backend(monkeypatch, QIBAN_LLM_API_KEY="sk-test")
     assert backend.base_url == "https://api.moonshot.cn/v1"
-    assert backend.model == "moonshot-v1-8k"
+    assert backend.model == "kimi-k2.5"
 
 
 # ------------------------------------------------------------------ 工厂
