@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildLLMMessages, cleanHistory, handler } from './chat.mjs';
+import { buildLLMMessages, cleanHistory, handler } from '../netlify/functions/chat.mjs';
 
 test('cleanHistory keeps only safe recent user and assistant turns', () => {
   const input = [
