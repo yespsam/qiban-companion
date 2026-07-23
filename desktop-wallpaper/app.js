@@ -115,7 +115,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.20-echo-guard-merged-anims-1';
+const modelAssetVersion = 'v0.2.21-llm-input-1';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -3049,6 +3049,12 @@ function updatePointer(event) {
   state.lastPointerMovedAt = performance.now() * 0.001;
 }
 
+function isEditableTarget(target) {
+  if (!target || target === document || target === window) return false;
+  const element = target.closest ? target.closest('input, textarea, select, [contenteditable="true"]') : null;
+  return !!element;
+}
+
 function stopCurrentAudio() {
   stopMobileVoiceCapture(true);
   if (state.currentAudio) {
@@ -3248,6 +3254,11 @@ function renderLlmPanel() {
   keyInput.placeholder = 'sk-……（platform.moonshot.cn 控制台获取）';
   keyInput.value = state.llmKey || '';
   keyInput.autocomplete = 'off';
+  keyInput.inputMode = 'text';
+  keyInput.spellcheck = false;
+  keyInput.autocapitalize = 'none';
+  keyInput.addEventListener('click', (event) => event.stopPropagation());
+  keyInput.addEventListener('pointerdown', (event) => event.stopPropagation());
   llmPanel.appendChild(keyInput);
 
   const modelSelect = document.createElement('select');
@@ -3263,6 +3274,8 @@ function renderLlmPanel() {
     modelSelect.appendChild(opt);
   });
   modelSelect.value = state.llmModel || 'kimi-k2.5';
+  modelSelect.addEventListener('click', (event) => event.stopPropagation());
+  modelSelect.addEventListener('pointerdown', (event) => event.stopPropagation());
   llmPanel.appendChild(modelSelect);
 
   const row = document.createElement('div');
@@ -3299,6 +3312,8 @@ function renderLlmPanel() {
   status.className = 'llm-status';
   status.textContent = state.llmKey ? `当前已绑定 ${state.llmModel}` : '当前未绑定：使用内置模板回复';
   llmPanel.appendChild(status);
+
+  window.setTimeout(() => keyInput.focus(), 40);
 }
 
 function loadVoiceResources() {
@@ -3729,6 +3744,7 @@ canvas.addEventListener('click', () => {
 window.addEventListener('pointermove', updatePointer);
 window.addEventListener('resize', resize);
 window.addEventListener('keydown', (event) => {
+  if (isEditableTarget(event.target)) return;
   const key = event.key.toLowerCase();
   if (key === 'd') {
     toggleDialog();
@@ -3780,6 +3796,11 @@ if (voicePanel) {
 }
 if (builderPanel) {
   builderPanel.addEventListener('click', (event) => event.stopPropagation());
+}
+if (llmPanel) {
+  llmPanel.addEventListener('click', (event) => event.stopPropagation());
+  llmPanel.addEventListener('pointerdown', (event) => event.stopPropagation());
+  llmPanel.addEventListener('touchstart', (event) => event.stopPropagation(), { passive: true });
 }
 if (mobileShell) {
   mobileShell.addEventListener('click', (event) => event.stopPropagation());
