@@ -100,7 +100,7 @@ function resolveApiBase() {
 
 const voiceApiEnabledInPage = enabledParam('voice', true);
 const browserVoiceFallbackEnabled = enabledParam('browserVoice', false);
-const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') === '1');
+const dialogEnabledInPage = enabledParam('dialog', storedValue('qiban-dialog') !== '0');
 const voiceApiBase = resolveApiBase();
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
@@ -115,7 +115,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.37-f4-m4-selected';
+const modelAssetVersion = 'v0.2.41-hybrid-actions-chat';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -124,19 +124,22 @@ const modelAssets = {
     selection: 'F4',
     model: modelUrl('./assets/models/xiao-qi.glb'),
     animations: {},
-    nativeAnimations: false,
+    nativeAnimations: true,
     modeledHands: true
   },
   male: {
     selection: 'M4',
     model: modelUrl('./assets/models/qi-an.glb'),
     animations: {},
-    nativeAnimations: false,
+    nativeAnimations: true,
     modeledHands: true
   }
 };
 
-const runtimeModelActions = new Set([]);
+// Locomotion and the vetted heart gesture use captured clips. Idle and the
+// other gestures stay on the tuned second-generation poses so they remain
+// readable and front-facing.
+const runtimeModelActions = new Set(['heart', 'walk', 'run']);
 const loopingModelActions = new Set(['idle', 'voice', 'walk', 'run']);
 const timedLoopingModelActions = new Set(['voice', 'walk', 'run']);
 const nativeModelActionDurations = {
@@ -147,6 +150,18 @@ const nativeModelActionDurations = {
   voice: 4.8,
   walk: 6.2,
   run: 5.4
+};
+const nativeModelPlaybackRates = {
+  idle: 0.72,
+  nod: 2.6,
+  heart: 1.2,
+  wave: 1.12,
+  voice: 1,
+  walk: 1,
+  run: 1
+};
+const nativeModelClipRanges = {
+  heart: { start: 0, end: 70 }
 };
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
@@ -227,10 +242,10 @@ const personas = {
     cheek: 0xf0a996,
     scale: 1.04,
     idlePoseTime: 3.02,
-    modelScaleDesktop: 1.28,
-    modelScaleMobile: 1.15,
-    modelYDesktop: -0.12,
-    modelYMobile: -0.1,
+    modelScaleDesktop: 1.55,
+    modelScaleMobile: 1.5,
+    modelYDesktop: 0.08,
+    modelYMobile: 0.08,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -2266,6 +2281,10 @@ function activateLoadedModel(id) {
   applyModelSkin(entry);
   updateModelHandOverlayMaterials();
   updateCosmeticLayer();
+  if (!entry.activeAnimation && entry.actions.idle) {
+    playModelAnimation(entry, 'idle');
+    entry.mixer.update(0);
+  }
   modelLayer.visible = true;
   avatar.visible = false;
   document.body.classList.add('model-ready');
@@ -2302,8 +2321,18 @@ function loadModel(id) {
       const name = clip.name;
       if (!runtimeModelActions.has(name)) return;
       if (!Number.isFinite(clip.duration) || clip.duration <= 0) return;
-      entry.animationClips[name] = clip;
-      const action = entry.mixer.clipAction(clip, entry.root);
+      const clipRange = nativeModelClipRanges[name];
+      const runtimeClip = clipRange && clip.duration > 1
+        ? THREE.AnimationUtils.subclip(
+          clip,
+          name,
+          clipRange.start,
+          Math.min(clipRange.end || Math.floor(clip.duration * 30), Math.floor(clip.duration * 30)),
+          30
+        )
+        : clip;
+      entry.animationClips[name] = runtimeClip;
+      const action = entry.mixer.clipAction(runtimeClip, entry.root);
       const shouldLoop = loopingModelActions.has(name);
       action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
       action.clampWhenFinished = !shouldLoop;
@@ -2383,10 +2412,13 @@ function playModelAnimation(entry, name) {
   selected.clampWhenFinished = !shouldLoop;
   selected.enabled = true;
   selected.setEffectiveWeight(1);
-  selected.reset().fadeIn(fade).play();
+  selected.reset();
+  if (previous && previous !== selected) selected.fadeIn(fade);
+  selected.play();
   selected.paused = false;
   entry.activeAction = selected;
   entry.activeAnimation = name;
+  if (!previous) entry.mixer.update(0);
   return true;
 }
 
@@ -2683,11 +2715,12 @@ function addModelLookOffset(entry, pointerLag, sway, weight = 1) {
 function modelFrameScaleMultiplier() {
   const mobile = window.innerWidth < 720;
   if (mobile) {
+    const male = state.activePersona === 'male';
     return {
-      wave: 0.86,
+      wave: male ? 0.72 : 0.8,
       nod: 1,
-      heart: 0.98,
-      voice: 0.98
+      heart: male ? 0.72 : 0.82,
+      voice: male ? 0.92 : 0.98
     }[state.action] || 1;
   }
   const actionScale = {
@@ -2735,10 +2768,19 @@ function applyRuntimeLocomotionLayer(entry, elapsed, isRun, profile, duration) {
   addBoneRotation(entry, 'RightHand', 0, 0, -stride * 0.035 * fade);
 }
 
-function modelNativeActionDuration(action, profile, voiceActive = false) {
-  const base = nativeModelActionDurations[action] || 3.2;
-  if (action === 'voice' && voiceActive) return Math.max(base, 4.8);
-  return base / profile.action;
+function modelNativePlaybackRate(action, profile) {
+  const base = nativeModelPlaybackRates[action] || 1;
+  return action === 'idle' ? base : base * profile.action;
+}
+
+function modelNativeActionDuration(entry, action, profile, voiceActive = false) {
+  const playbackRate = modelNativePlaybackRate(action, profile);
+  const clipDuration = modelClipDuration(entry, action, nativeModelActionDurations[action] || 3.2) / playbackRate;
+  const duration = timedLoopingModelActions.has(action)
+    ? (nativeModelActionDurations[action] || clipDuration) / profile.action
+    : clipDuration;
+  if (action === 'voice' && voiceActive) return Math.max(duration, 4.8);
+  return duration;
 }
 
 function applyNativeActionPresentation(entry, action, t, elapsed, profile, duration, voiceActive) {
@@ -2780,8 +2822,23 @@ function updateModelPose(t, delta = 0) {
   const pointerLag = Math.max(0, 1 - (t - state.lastPointerMovedAt) / 3);
 
   applyModelFrameScale(modelFrameScaleMultiplier(), breath * 0.2);
+  modelLayer.rotation.x = 0;
   modelLayer.rotation.y = state.dragYaw + state.pointerX * 0.04 + Math.sin(t * 0.32) * 0.008 * profile.gaze;
   modelLayer.rotation.z = sway * 0.08;
+
+  if (runtimeModelActions.has(state.action)) {
+    ensureModelAnimations(state.activePersona, [state.action]);
+  }
+
+  if (runtimeModelActions.has(state.action) && entry.actions[state.action]) {
+    const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
+    const duration = modelNativeActionDuration(entry, state.action, profile, voiceActive);
+    playModelAnimation(entry, state.action);
+    const actionSpeed = modelNativePlaybackRate(state.action, profile);
+    entry.mixer.update(delta * actionSpeed);
+    applyNativeActionPresentation(entry, state.action, t, elapsed, profile, duration, voiceActive);
+    return;
+  }
 
   resetModelForProceduralPose(entry);
   applyModelNaturalBase(entry, t, breath, sway, pointerLag, state.action === 'voice' ? 0.72 : 1, true);
@@ -2837,35 +2894,14 @@ function updateModelPose(t, delta = 0) {
 
   if (state.action === 'heart') {
     const duration = 2.45 / profile.action;
-    const p = Math.min(elapsed / duration, 1);
-    const envelope = actionEnvelope(elapsed, duration, 0.2);
-    const pulse = Math.sin(p * Math.PI * 2) * 0.035 * envelope;
-    addBonePosition(entry, 'Hips', 0, 0.012 * envelope, 0);
-    addBoneRotation(entry, 'Spine', 0.045 * envelope, 0, pulse);
-    addBoneRotation(entry, 'Spine01', 0.035 * envelope, 0, pulse * 0.6);
-    addBoneRotation(entry, 'Head', -0.018 * envelope, 0, -pulse);
-    rig.heart.visible = true;
-    rig.heart.position.y = 1.7 + easeOutCubic(p) * 0.34;
-    rig.heart.scale.setScalar(0.2 * envelope + 0.001);
+    applyModelHeartPose(entry, elapsed, profile, duration);
     finishActionIfNeeded(elapsed, duration);
   }
 
   if (state.action === 'voice') {
     const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
     const duration = (voiceActive ? 4.2 : 2.1) / profile.action;
-    const p = Math.min(elapsed / duration, 1);
-    const envelope = voiceActive ? clamp01(p / 0.22) : actionEnvelope(elapsed, duration, 0.24);
-    const talk = state.speaking ? Math.sin(t * 8.2) * 0.018 : 0;
-    const handBeat = Math.sin(t * 3.6 * profile.speed) * 0.07 * envelope;
-    addBoneRotation(entry, 'Hips', 0, 0, 0.012 * envelope);
-    addBoneRotation(entry, 'Spine', 0.018 * envelope, 0, -0.02 * envelope);
-    addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.025 * envelope);
-    addBoneRotation(entry, 'neck', talk * 0.45, 0, 0);
-    addBoneRotation(entry, 'Head', talk, Math.sin(t * 2.2) * 0.018 * envelope, 0.012 * envelope);
-    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.06 * envelope);
-    addBoneRotation(entry, 'RightArm', -0.16 * envelope + handBeat * 0.35, -0.05 * envelope, -0.28 * envelope);
-    addBoneRotation(entry, 'RightForeArm', -0.08 * envelope, 0, -0.22 * envelope + handBeat);
-    addBoneRotation(entry, 'LeftArm', 0.04 * envelope, 0.02 * envelope, 0.08 * envelope);
+    applyModelVoicePose(entry, t, elapsed, profile, duration, voiceActive);
     if (!voiceActive) finishActionIfNeeded(elapsed, duration);
   }
 }
@@ -3775,15 +3811,13 @@ function checkVoiceStatus() {
 
 function interactWithCompanion() {
   const profileActions = currentMotionProfile().actions || ['wave', 'nod', 'heart', 'voice'];
-  const silentActions = modelState.active ? profileActions.filter((action) => action !== 'voice').concat(['turn']) : ['wave', 'nod', 'heart', 'turn'];
-  const dialogActions = modelState.active ? profileActions : ['wave', 'nod', 'heart'];
-  const actions = state.dialogEnabled ? dialogActions : silentActions;
+  const actions = modelState.active
+    ? profileActions.filter((action) => action !== 'voice').concat(['turn'])
+    : ['wave', 'nod', 'heart', 'turn'];
   const action = actions[state.interactionCount % actions.length];
   state.interactionCount += 1;
-  setAction(action);
-  if (state.dialogEnabled && action !== 'voice') {
-    requestVoice();
-  }
+  setAction(action, { skipVoiceRequest: true });
+  if (state.dialogEnabled) setMobileHint('我在听');
 }
 
 function toggleDialog() {
@@ -3793,7 +3827,10 @@ function toggleDialog() {
     state.voiceRequestId += 1;
     stopCurrentAudio();
   } else {
-    setAction('voice');
+    setAction('wave', {
+      skipVoiceRequest: true,
+      lineText: '对话已打开，我在听。'
+    });
   }
   checkVoiceStatus();
 }

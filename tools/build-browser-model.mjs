@@ -14,13 +14,29 @@ const builds = {
     // F4: purple hair with the black-green short outfit selected on 2026-07-23.
     base: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/rigged.glb',
     output: 'desktop-wallpaper/assets/models/xiao-qi.glb',
-    animations: {}
+    animations: {
+      idle: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/idle.glb',
+      nod: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/nod.glb',
+      heart: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/heart.glb',
+      wave: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/wave.glb',
+      voice: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/voice.glb',
+      walk: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/walking.glb',
+      run: 'meshy_output/20260722_194202_female-qiban-reference-rig-actions_019f8994/running.glb'
+    }
   },
   male: {
     // M4: purple hair with the black-green jacket selected on 2026-07-23.
     base: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/rigged.glb',
     output: 'desktop-wallpaper/assets/models/qi-an.glb',
-    animations: {}
+    animations: {
+      idle: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/idle.glb',
+      nod: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/nod.glb',
+      heart: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/heart.glb',
+      wave: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/wave.glb',
+      voice: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/voice.glb',
+      walk: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/walking.glb',
+      run: 'meshy_output/20260722_194940_male-qiban-reference-rig-actions_019f8998/running.glb'
+    }
   }
 };
 
@@ -53,6 +69,25 @@ function copyAnimation(document, sourceDocument, label, nodeMap, buffer) {
     .filter(({ animation, duration }) => animation.listChannels().length > 0 && duration > 0.001)
     .sort((a, b) => b.duration - a.duration)[0]?.animation;
   if (!sourceAnimation) throw new Error(`No animation found for "${label}".`);
+
+  sourceAnimation.listChannels().forEach((channel) => {
+    const target = channel.getTargetNode();
+    const sampler = channel.getSampler();
+    const output = sampler?.getOutput();
+    if (target?.getName() !== 'Hips' || channel.getTargetPath() !== 'translation' || !output) return;
+    const values = output.getArray();
+    const targetHips = nodeMap.get('Hips');
+    if (!values || values.length < 3 || !targetHips) return;
+    const anchored = new values.constructor(values);
+    const rest = targetHips.getTranslation();
+    const sourceY = anchored[1];
+    for (let index = 0; index < anchored.length; index += 3) {
+      anchored[index] = rest[0];
+      anchored[index + 1] = rest[1] + anchored[index + 1] - sourceY;
+      anchored[index + 2] = rest[2];
+    }
+    output.setArray(anchored);
+  });
 
   const animation = document.createAnimation(label);
   const samplerMap = new Map();
