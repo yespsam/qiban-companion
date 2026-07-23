@@ -1342,6 +1342,14 @@ body.mobile-mode .builder-panel {
 }
 
 @media (max-width: 720px) {
+  body.controls-open .mobile-chat,
+  body.controls-open .mobile-voice-bar,
+  body.controls-open .mobile-voice-hint {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .scene-strip {
     left: max(10px, env(safe-area-inset-left));
     top: max(10px, env(safe-area-inset-top));
@@ -1380,6 +1388,19 @@ body.mobile-mode .builder-panel {
   .dock-panel,
   .dock.open .dock-panel {
     width: min(280px, calc(100vw - 68px));
+  }
+
+  body.controls-open .dock.open {
+    top: auto;
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+    left: auto;
+  }
+
+  body.controls-open .dock.open .dock-panel {
+    top: auto;
+    right: 52px;
+    bottom: 0;
   }
 
   .voice-panel,
