@@ -80,3 +80,30 @@ test('handler forwards sanitized history to the cloud model request', async (t) 
     { role: 'user', content: '那就去那家吧' }
   ]);
 });
+
+test('handler keeps conversation available when the LLM provider fails', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+  });
+  globalThis.fetch = async () => {
+    throw new Error('provider unavailable');
+  };
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      text: '今天有点累',
+      persona_short: 'female',
+      llm_key: 'sk-test-key',
+      scene: 'daily'
+    })
+  });
+  const body = JSON.parse(response.body);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(body.mode, 'cloud_scene_reply');
+  assert.equal(body.llm.bound, true);
+  assert.ok(body.text);
+  assert.ok(body.thinking);
+});

@@ -3,6 +3,7 @@
 .env.local
 .run/
 .netlify/
+deno.lock
 .venv/
 node_modules/
 __pycache__/

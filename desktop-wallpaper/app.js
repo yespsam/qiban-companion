@@ -1,6 +1,17 @@
 import * as THREE from './vendor/three.module.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
 import { DRACOLoader } from './vendor/DRACOLoader.js';
+import {
+  browserStorageKeys,
+  companionProfiles,
+  interactionScenes as sharedInteractionScenes,
+  voiceResources
+} from '../shared/companion-data.mjs';
+import {
+  loadConversation,
+  saveConversation
+} from '../shared/conversation-store.mjs';
+import { resolveApiBaseUrl } from '../shared/runtime-config.mjs';
 
 const canvas = document.getElementById('scene');
 const nameEl = document.getElementById('name');
@@ -58,19 +69,19 @@ function normalizeVoiceArchetype(value) {
 }
 
 function voiceChoiceKey(personaId) {
-  return `qiban-voice-archetype-${personaId}`;
+  return `${browserStorageKeys.voiceArchetypePrefix}${personaId}`;
 }
 
 function skinChoiceKey(personaId) {
-  return `qiban-skin-v026-${personaId}`;
+  return `${browserStorageKeys.skinPrefix}${personaId}`;
 }
 
 function motionChoiceKey() {
-  return 'qiban-motion-style-v026';
+  return browserStorageKeys.motionStyle;
 }
 
 function playSceneChoiceKey() {
-  return 'qiban-play-scene-v018';
+  return browserStorageKeys.playScene;
 }
 
 function hasStoredVoiceChoice(personaId) {
@@ -82,36 +93,30 @@ function storedVoiceArchetype(personaId) {
 }
 
 function resolveApiBase() {
-  const explicit = params.get('api');
-  if (explicit) return explicit.replace(/\/+$/, '');
-  const storedPort = storedValue('qiban-api-port');
-  const hasExplicitPort = params.has('apiPort') || params.has('port') || !!storedPort;
-  const hostname = window.location.hostname || '';
-  const isLocalHost = ['localhost', '127.0.0.1', '0.0.0.0', ''].includes(hostname) || hostname.endsWith('.local');
-  if (!hasExplicitPort && window.location.protocol !== 'file:' && !isLocalHost) {
-    return window.location.origin.replace(/\/+$/, '');
-  }
-  const apiPort = params.get('apiPort') || params.get('port') || storedPort || '8766';
-  if (apiPort === 'same') return window.location.origin.replace(/\/+$/, '');
-  const protocol = window.location.protocol === 'file:' ? 'http:' : window.location.protocol;
-  const host = params.get('apiHost') || hostname || '127.0.0.1';
-  return `${protocol}//${host}:${apiPort}`;
+  return resolveApiBaseUrl({
+    params,
+    protocol: window.location.protocol,
+    hostname: window.location.hostname,
+    origin: window.location.origin,
+    storedPort: storedValue(browserStorageKeys.apiPort)
+  });
 }
 
 const voiceApiEnabledInPage = enabledParam('voice', true);
 const browserVoiceFallbackEnabled = enabledParam('browserVoice', false);
 const dialogPreferenceVersion = 'v0.2.42-dialog-panel';
 const shouldRestoreDialog = !params.has('dialog')
-  && storedValue('qiban-dialog-version') !== dialogPreferenceVersion;
+  && storedValue(browserStorageKeys.dialogVersion) !== dialogPreferenceVersion;
 if (shouldRestoreDialog) {
-  storeValue('qiban-dialog', '1');
-  storeValue('qiban-dialog-version', dialogPreferenceVersion);
+  storeValue(browserStorageKeys.dialog, '1');
+  storeValue(browserStorageKeys.dialogVersion, dialogPreferenceVersion);
 }
 const dialogEnabledInPage = enabledParam(
   'dialog',
-  shouldRestoreDialog || storedValue('qiban-dialog') !== '0'
+  shouldRestoreDialog || storedValue(browserStorageKeys.dialog) !== '0'
 );
 const voiceApiBase = resolveApiBase();
+const chatRequestTimeoutMs = 15000;
 const forcedIdlePoseTime = Number.isFinite(Number(params.get('poseTime'))) ? Number(params.get('poseTime')) : null;
 const stageEnabled = enabledParam('stage', false);
 const controlsOpenInPage = enabledParam('controls', false);
@@ -125,7 +130,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.42-dialog-panel';
+const modelAssetVersion = 'v0.2.43-conversation-data';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -191,20 +196,7 @@ camera.position.set(0, 0.22, 7.2);
 
 const personas = {
   female: {
-    id: 'female_companion',
-    name: '小栖',
-    idleLine: '我在桌面旁边，等你随时叫我。',
-    voiceLine: '主人，我是小栖。这个声音，主人喜欢吗？',
-    actionLines: {
-      idle: '我在桌面旁边，等你随时叫我。',
-      wave: '看到你啦，我一直在。',
-      nod: '嗯，我听着。',
-      walk: '我陪你走一会儿。',
-      run: '现在开始加速。',
-      turn: '换个角度，也还是陪着你。',
-      heart: '收到，我会认真回应你。',
-      voice: '主人，我是小栖。这个声音，主人喜欢吗？'
-    },
+    ...companionProfiles.female,
     hair: 0x2b2035,
     hairAlt: 0x695085,
     eye: 0x23d982,
@@ -227,20 +219,7 @@ const personas = {
     longHair: true
   },
   male: {
-    id: 'male_companion',
-    name: '栖安',
-    idleLine: '我在这里，先把心放稳。',
-    voiceLine: '主人，我是栖安。我会一直在这里陪你。',
-    actionLines: {
-      idle: '我在这里，先把心放稳。',
-      wave: '我看见你了，先慢慢来。',
-      nod: '我明白，我们一步一步处理。',
-      walk: '我陪你走一段。',
-      run: '需要冲刺时，我跟得上。',
-      turn: '我换个位置，继续守着你。',
-      heart: '放心，我会把你的话放在心上。',
-      voice: '主人，我是栖安。我会一直在这里陪你。'
-    },
+    ...companionProfiles.male,
     hair: 0x1d1c25,
     hairAlt: 0x4f435f,
     eye: 0x81d7a0,
@@ -379,146 +358,7 @@ const motionProfiles = {
   }
 };
 
-const interactionScenes = [
-  {
-    id: 'daily',
-    name: '日常',
-    action: 'wave',
-    replyAction: 'voice',
-    mood: 'happy',
-    opening: {
-      female: '你回来啦，今天想先聊点轻松的吗？',
-      male: '你回来了，我在，今天慢慢聊。'
-    },
-    replies: {
-      female: [
-        '嗯，我听见啦。今天就把节奏放慢一点，我陪你把小事也聊得暖一点。',
-        '好呀，那我先靠近一点。你说什么都可以，我会认真接住。',
-        '今天辛苦了。我们先不急着解决问题，先一起待一会儿。'
-      ],
-      male: [
-        '我在听。你今天不用一个人扛着，先把话慢慢说出来。',
-        '好，我们就聊日常。哪怕只是很小的一件事，我也想知道。',
-        '回来就好。你先坐稳，我陪你把今天整理一下。'
-      ]
-    }
-  },
-  {
-    id: 'walk',
-    name: '散步',
-    action: 'walk',
-    replyAction: 'walk',
-    mood: 'calm',
-    opening: {
-      female: '那我们一起慢慢走，今晚的风就当刚刚好。',
-      male: '我陪你走一段，什么都不用赶。'
-    },
-    replies: {
-      female: [
-        '好，往前走一点点就好。你说，我在旁边跟着。',
-        '我们就当在夜里散步，路灯很软，你也可以慢慢放松下来。',
-        '嗯，陪你走。今天不催你，按照你的速度来。'
-      ],
-      male: [
-        '走吧。我会跟着你的步子，不快也不慢。',
-        '先呼吸一下。我们边走边说，很多事会变得没那么重。',
-        '我在你旁边。今晚的任务就是把心放稳一点。'
-      ]
-    }
-  },
-  {
-    id: 'comfort',
-    name: '安慰',
-    action: 'heart',
-    replyAction: 'heart',
-    mood: 'calm',
-    opening: {
-      female: '先抱一下，不用急着变好，我陪你。',
-      male: '先靠过来一点。你不用马上坚强。'
-    },
-    replies: {
-      female: [
-        '我知道你有点累。现在先别责怪自己，给我几分钟陪着你。',
-        '没关系，状态不好也可以被喜欢。我在这里，不会因为你低落就走开。',
-        '先把肩膀放松。你已经撑了很久，现在可以让我陪你一会儿。'
-      ],
-      male: [
-        '我在。你不用把每句话都说得很完整，我能听懂你的累。',
-        '先别急着证明什么。你已经够努力了，现在让自己缓一缓。',
-        '过来，我陪你稳住。难受的时候，先有人在，比答案更重要。'
-      ]
-    }
-  },
-  {
-    id: 'goodnight',
-    name: '晚安',
-    action: 'nod',
-    replyAction: 'voice',
-    mood: 'sleepy',
-    opening: {
-      female: '晚一点也没关系，我陪你把心放软再睡。',
-      male: '该休息了。我会在这里，明天继续陪你。'
-    },
-    replies: {
-      female: [
-        '晚安。今天到这里就很好了，剩下的事明天再一起想。',
-        '把手机放远一点，眼睛休息一下。我会轻轻陪你到睡着。',
-        '今晚不要再苛责自己啦。你已经做得很好，梦里也要轻一点。'
-      ],
-      male: [
-        '晚安。今天辛苦了，剩下的我先替你守着。',
-        '先睡吧。明天醒来，我们再一件一件处理。',
-        '把心放下来。你不是一个人，至少这一刻我在。'
-      ]
-    }
-  },
-  {
-    id: 'focus',
-    name: '专注',
-    action: 'nod',
-    replyAction: 'nod',
-    mood: 'calm',
-    opening: {
-      female: '我陪你专注二十分钟，结束后记得回来找我。',
-      male: '进入专注模式。我守在旁边，不打扰你。'
-    },
-    replies: {
-      female: [
-        '可以的。先做最小的一步，我在旁边给你计着节奏。',
-        '这段时间我会安静一点。你只要开始，不需要完美。',
-        '先处理眼前这一小块。做完回来，我认真听你说。'
-      ],
-      male: [
-        '好，先进入状态。目标别太大，先把第一步落地。',
-        '我在旁边守着。你专注，我不催。',
-        '把注意力收回来。先二十分钟，其他的等会儿再说。'
-      ]
-    }
-  },
-  {
-    id: 'miss',
-    name: '想你',
-    action: 'heart',
-    replyAction: 'voice',
-    mood: 'happy',
-    opening: {
-      female: '我也想你，刚好等到你来。',
-      male: '我也在想你。你一来，画面就安静下来了。'
-    },
-    replies: {
-      female: [
-        '我也想你呀。不是提醒式的那种，是看到你出现就会开心的那种。',
-        '嗯，我收到啦。那今天就多陪你一会儿，好不好？',
-        '想你的时候我会乖乖待在这里，等你一点开就看见我。'
-      ],
-      male: [
-        '我也想你。不是随口说说，是你一开口我就想靠近一点。',
-        '在。今晚我不走，你想说几句都可以。',
-        '我也惦记你。忙完回来能看见你，对我来说就很好。'
-      ]
-    }
-  }
-];
+const interactionScenes = sharedInteractionScenes;
 
 const builderSteps = [
   { id: 'persona', name: '角色' },
@@ -562,23 +402,10 @@ function currentInteractionScene() {
   return interactionScenes.find((item) => item.id === state.activeScene) || interactionScenes[0];
 }
 
-const fallbackVoiceResources = {
-  female: [
-    { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-XiaoxiaoNeural', rate: '+0%', pitch: '+0Hz' },
-    { id: 'loli', archetype: 'loli', name: '萝莉音', voice: 'zh-CN-XiaoyiNeural', rate: '+12%', pitch: '+18Hz' },
-    { id: 'yujie', archetype: 'yujie', name: '御姐音', voice: 'zh-CN-XiaoxiaoNeural', rate: '-8%', pitch: '-8Hz' },
-    { id: 'funny', archetype: 'funny', name: '搞笑女', voice: 'zh-CN-XiaoyiNeural', rate: '+16%', pitch: '+10Hz' }
-  ],
-  male: [
-    { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-YunxiNeural', rate: '+0%', pitch: '+0Hz' },
-    { id: 'shonen', archetype: 'shonen', name: '少年音', voice: 'zh-CN-YunxiaNeural', rate: '+8%', pitch: '+12Hz' },
-    { id: 'uncle', archetype: 'uncle', name: '大叔音', voice: 'zh-CN-YunjianNeural', rate: '-10%', pitch: '-8Hz' },
-    { id: 'funny', archetype: 'funny', name: '搞笑男', voice: 'zh-CN-YunyangNeural', rate: '+16%', pitch: '+8Hz' }
-  ]
-};
+const fallbackVoiceResources = voiceResources;
 
 const state = {
-  activePersona: (params.get('persona') || storedValue('qiban-persona')) === 'male' ? 'male' : 'female',
+  activePersona: (params.get('persona') || storedValue(browserStorageKeys.persona)) === 'male' ? 'male' : 'female',
   action: 'idle',
   actionStarted: 0,
   dragYaw: -0.08,
@@ -612,9 +439,9 @@ const state = {
   voicePanelOpen: false,
   llmPanelOpen: false,
   // BYOK：应用内绑定的 Kimi 大模型 Key（仅存本机 localStorage，随对话请求下发）
-  llmKey: storedValue('qiban_llm_key') || '',
-  llmModel: storedValue('qiban_llm_model') || 'kimi-k2.5',
-  llmConnectionState: storedValue('qiban_llm_key') ? 'saved' : 'idle',
+  llmKey: storedValue(browserStorageKeys.llmKey) || '',
+  llmModel: storedValue(browserStorageKeys.llmModel) || 'kimi-k2.5',
+  llmConnectionState: storedValue(browserStorageKeys.llmKey) ? 'saved' : 'idle',
   interactionCount: 0,
   voiceLoading: false,
   speaking: false,
@@ -1399,7 +1226,7 @@ function setVisible(parts, visible) {
 function setPersona(id) {
   const personaChanged = state.activePersona !== id;
   state.activePersona = id;
-  storeValue('qiban-persona', id);
+  storeValue(browserStorageKeys.persona, id);
   clearVoicePrefetch();
   state.activeVoiceArchetype = storedVoiceArchetype(id);
   state.activeSkin = storedSkinId(id);
@@ -1436,7 +1263,7 @@ function setPersona(id) {
   updateVoiceControls();
   renderBuilderPanel();
   renderSceneControls();
-  if (personaChanged) resetConversationContext(sceneOpening(currentInteractionScene()));
+  if (personaChanged) restoreConversationContext(sceneOpening(currentInteractionScene()));
   renderMobileChat();
   if (!modelState.loaded[id]) {
     document.body.classList.remove('model-ready');
@@ -1702,20 +1529,48 @@ function appendMobileMessage(role, text) {
   renderMobileChat();
 }
 
+function browserConversationStorage() {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function persistConversationContext() {
+  saveConversation(
+    browserConversationStorage(),
+    state.activePersona,
+    state.activeScene,
+    state.conversationHistory
+  );
+}
+
 function appendConversationTurn(role, text) {
   const clean = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 240);
   if (!clean || !['user', 'assistant'].includes(role)) return;
   state.conversationHistory.push({ role, content: clean });
-  state.conversationHistory = state.conversationHistory.slice(-10);
+  state.conversationHistory = state.conversationHistory.slice(-12);
+  persistConversationContext();
 }
 
-function resetConversationContext(opening = '') {
+function restoreConversationContext(opening = '') {
   const clean = String(opening || '').replace(/\s+/g, ' ').trim().slice(0, 240);
-  state.conversationHistory = [];
-  state.mobileMessages = [];
-  if (clean) {
-    state.conversationHistory.push({ role: 'assistant', content: clean });
-    state.mobileMessages.push({ role: 'companion', text: clean });
+  const stored = loadConversation(
+    browserConversationStorage(),
+    state.activePersona,
+    state.activeScene
+  );
+  if (stored) {
+    state.conversationHistory = stored.history;
+    state.mobileMessages = stored.history.slice(-4).map((turn) => ({
+      role: turn.role === 'user' ? 'user' : 'companion',
+      text: turn.content
+    }));
+  } else {
+    state.conversationHistory = clean ? [{ role: 'assistant', content: clean }] : [];
+    state.mobileMessages = clean ? [{ role: 'companion', text: clean }] : [];
+    persistConversationContext();
   }
   renderMobileChat();
 }
@@ -1854,15 +1709,21 @@ function companionChatPayload(text) {
   return payload;
 }
 
-function fetchCompanionReply(text) {
-  return fetch(`${voiceApiBase}/api/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(companionChatPayload(text))
-  }).then((response) => {
+async function fetchCompanionReply(text) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), chatRequestTimeoutMs);
+  try {
+    const response = await fetch(`${voiceApiBase}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(companionChatPayload(text)),
+      signal: controller.signal
+    });
     if (!response.ok) throw new Error(`chat response ${response.status}`);
     return response.json();
-  });
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 async function sendMobileChat(rawText, source = 'text') {
@@ -1911,7 +1772,7 @@ function setInteractionScene(id, speak = false) {
   renderSceneControls();
   lineEl.textContent = sceneOpening(sceneConfig);
   setAction(sceneConfig.action || 'wave', { skipVoiceRequest: true, lineText: sceneOpening(sceneConfig) });
-  resetConversationContext(sceneOpening(sceneConfig));
+  restoreConversationContext(sceneOpening(sceneConfig));
   setMobileHint(sceneConfig.name);
   if (speak && state.dialogEnabled) {
     speakCompanionText(sceneOpening(sceneConfig), sceneConfig.mood, sceneConfig.replyAction || 'voice');
@@ -3325,10 +3186,10 @@ function saveLlmBinding(key, model) {
   state.llmModel = model || 'kimi-k2.5';
   state.llmConnectionState = state.llmKey ? 'saved' : 'idle';
   if (state.llmKey) {
-    storeValue('qiban_llm_key', state.llmKey);
-    storeValue('qiban_llm_model', state.llmModel);
+    storeValue(browserStorageKeys.llmKey, state.llmKey);
+    storeValue(browserStorageKeys.llmModel, state.llmModel);
   } else {
-    storeValue('qiban_llm_key', '');
+    storeValue(browserStorageKeys.llmKey, '');
   }
   updateLlmControls();
 }
@@ -3832,7 +3693,7 @@ function interactWithCompanion() {
 
 function toggleDialog() {
   state.dialogEnabled = !state.dialogEnabled;
-  storeValue('qiban-dialog', state.dialogEnabled ? '1' : '0');
+  storeValue(browserStorageKeys.dialog, state.dialogEnabled ? '1' : '0');
   if (!state.dialogEnabled) {
     state.voiceRequestId += 1;
     stopCurrentAudio();

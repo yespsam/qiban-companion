@@ -1,17 +1,9 @@
-export const voiceResources = {
-  female: [
-    { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-XiaoxiaoNeural', rate: '+0%', pitch: '+0Hz' },
-    { id: 'loli', archetype: 'loli', name: '萝莉音', voice: 'zh-CN-XiaoyiNeural', rate: '+12%', pitch: '+18Hz' },
-    { id: 'yujie', archetype: 'yujie', name: '御姐音', voice: 'zh-CN-XiaoxiaoNeural', rate: '-8%', pitch: '-8Hz' },
-    { id: 'funny', archetype: 'funny', name: '搞笑女', voice: 'zh-CN-XiaoyiNeural', rate: '+16%', pitch: '+10Hz' }
-  ],
-  male: [
-    { id: 'default', archetype: '', name: '随身份', voice: 'zh-CN-YunxiNeural', rate: '+0%', pitch: '+0Hz' },
-    { id: 'shonen', archetype: 'shonen', name: '少年音', voice: 'zh-CN-YunxiaNeural', rate: '+8%', pitch: '+12Hz' },
-    { id: 'uncle', archetype: 'uncle', name: '大叔音', voice: 'zh-CN-YunjianNeural', rate: '-10%', pitch: '-8Hz' },
-    { id: 'funny', archetype: 'funny', name: '搞笑男', voice: 'zh-CN-YunyangNeural', rate: '+16%', pitch: '+8Hz' }
-  ]
-};
+import {
+  personaKind,
+  voiceResources
+} from '../../shared/companion-data.mjs';
+
+export { personaKind, voiceResources };
 
 export function jsonResponse(body, statusCode = 200) {
   return {
@@ -22,13 +14,6 @@ export function jsonResponse(body, statusCode = 200) {
     },
     body: JSON.stringify(body)
   };
-}
-
-export function personaKind(value) {
-  const raw = String(value || '').toLowerCase();
-  if (raw.includes('female') || raw.includes('xiao') || raw.includes('小栖') || raw.includes('女')) return 'female';
-  if (raw.includes('male') || raw.includes('qi-an') || raw.includes('男')) return 'male';
-  return 'female';
 }
 
 export function resolveVoice(persona, archetype) {
