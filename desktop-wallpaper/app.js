@@ -443,6 +443,10 @@ const state = {
   llmKey: storedValue(browserStorageKeys.llmKey) || '',
   llmModel: storedValue(browserStorageKeys.llmModel) || 'kimi-k2.5',
   llmConnectionState: storedValue(browserStorageKeys.llmKey) ? 'saved' : 'idle',
+  llmGatewayAvailable: false,
+  llmGatewayModel: '',
+  llmResolvedProvider: '',
+  llmResolvedModel: '',
   interactionCount: 0,
   voiceLoading: false,
   speaking: false,
@@ -1737,7 +1741,15 @@ async function sendMobileChat(rawText, source = 'text') {
 
   if (result?.mode === 'cloud_llm') {
     state.llmConnectionState = 'verified';
+    state.llmResolvedProvider = result.llm?.provider || '';
+    state.llmResolvedModel = result.llm?.model || '';
+    state.llmGatewayAvailable = state.llmGatewayAvailable || !!result.llm?.gateway_available;
+    if (state.llmResolvedProvider === 'netlify_ai_gateway') {
+      state.llmGatewayModel = state.llmResolvedModel;
+    }
   } else if (state.llmKey) {
+    state.llmConnectionState = 'failed';
+  } else if (result?.llm?.gateway_available || state.llmGatewayAvailable) {
     state.llmConnectionState = 'failed';
   }
   updateLlmControls();
@@ -3158,23 +3170,34 @@ function updateLlmControls() {
   if (!llmButton) return;
   const verified = state.llmConnectionState === 'verified';
   const failed = state.llmConnectionState === 'failed';
-  llmButton.textContent = failed ? '模型!' : state.llmKey || verified ? '模型✓' : '模型';
-  llmButton.classList.toggle('active', !!state.llmKey || verified);
+  const available = state.llmConnectionState === 'available';
+  const providerName = state.llmResolvedProvider === 'netlify_ai_gateway' ? '云端 AI' : 'Kimi';
+  const resolvedModel = state.llmResolvedModel || state.llmModel;
+  llmButton.textContent = failed ? '模型!' : state.llmKey || verified || available ? '模型✓' : '模型';
+  llmButton.classList.toggle('active', !!state.llmKey || verified || available);
   llmButton.setAttribute('aria-expanded', state.llmPanelOpen ? 'true' : 'false');
   llmButton.title = failed
-    ? 'Key 已保存，但最近一次请求未成功，当前已回退到内置回复'
+    ? '最近一次云端模型请求未成功，当前已回退到内置回复'
     : verified
-      ? `Kimi（${state.llmModel}）已通过真实对话验证`
+      ? `${providerName}（${resolvedModel}）已通过真实对话验证`
       : state.llmKey
         ? `已保存 Kimi（${state.llmModel}），发送一条消息后验证`
-        : '绑定 Kimi 大模型：人物按你的话实时生成回应';
+        : available
+          ? `云端 AI（${state.llmResolvedModel}）已就绪`
+          : '正在检测云端对话模型';
   renderLlmPanel();
 }
 
 function saveLlmBinding(key, model) {
   state.llmKey = String(key || '').trim();
   state.llmModel = model || 'kimi-k2.5';
-  state.llmConnectionState = state.llmKey ? 'saved' : 'idle';
+  state.llmConnectionState = state.llmKey
+    ? 'saved'
+    : state.llmGatewayAvailable
+      ? 'available'
+      : 'idle';
+  state.llmResolvedProvider = state.llmKey ? 'kimi' : state.llmGatewayAvailable ? 'netlify_ai_gateway' : '';
+  state.llmResolvedModel = state.llmKey ? state.llmModel : state.llmGatewayModel;
   if (state.llmKey) {
     storeValue(browserStorageKeys.llmKey, state.llmKey);
     storeValue(browserStorageKeys.llmModel, state.llmModel);
@@ -3192,12 +3215,12 @@ function renderLlmPanel() {
 
   const title = document.createElement('div');
   title.className = 'llm-title';
-  title.textContent = '绑定 Kimi 大模型';
+  title.textContent = '对话模型';
   llmPanel.appendChild(title);
 
   const hint = document.createElement('div');
   hint.className = 'llm-hint';
-  hint.textContent = '绑定后人物按你说的每句话实时生成回应（不再走模板）。Key 只存在本机浏览器，随对话请求加密传输。';
+  hint.textContent = '默认使用站点云端 AI。也可绑定自己的 Kimi Key；Key 只存在本机浏览器，随对话请求加密传输。';
   llmPanel.appendChild(hint);
 
   const keyInput = document.createElement('textarea');
@@ -3237,12 +3260,14 @@ function renderLlmPanel() {
   const status = document.createElement('div');
   status.className = 'llm-status';
   status.textContent = state.llmConnectionState === 'failed'
-    ? 'Key 已保存，但最近一次请求失败：当前使用内置回复'
+    ? '最近一次云端请求失败：当前使用内置回复'
     : state.llmConnectionState === 'verified'
-      ? `${state.llmModel} 已通过真实对话验证`
+      ? `${state.llmResolvedProvider === 'netlify_ai_gateway' ? '云端 AI' : 'Kimi'} · ${state.llmResolvedModel || state.llmModel} 已验证`
       : state.llmKey
         ? `已保存 ${state.llmModel}，发送一条消息后验证`
-        : '当前未绑定：使用内置模板回复';
+        : state.llmGatewayAvailable
+          ? `云端 AI · ${state.llmResolvedModel} 已就绪`
+          : '正在检测云端对话模型';
 
   const pasteBtn = document.createElement('button');
   pasteBtn.className = 'voice-option';
@@ -3299,6 +3324,23 @@ function renderLlmPanel() {
   llmPanel.appendChild(status);
 
   window.setTimeout(() => keyInput.focus(), 40);
+}
+
+function checkChatStatus() {
+  fetch(`${voiceApiBase}/api/chat`)
+    .then((response) => response.ok ? response.json() : null)
+    .then((body) => {
+      if (!body) return;
+      state.llmGatewayAvailable = !!body.gateway?.available;
+      state.llmGatewayModel = body.gateway?.model || '';
+      if (!state.llmKey && state.llmGatewayAvailable && state.llmConnectionState !== 'verified') {
+        state.llmConnectionState = 'available';
+        state.llmResolvedProvider = 'netlify_ai_gateway';
+        state.llmResolvedModel = state.llmGatewayModel || 'gpt-4.1-mini';
+      }
+      updateLlmControls();
+    })
+    .catch(() => {});
 }
 
 function loadVoiceResources() {
@@ -3837,5 +3879,6 @@ if (!pendingInitialAction && initialAction) {
 }
 setDockOpen(controlsOpenInPage);
 checkVoiceStatus();
+checkChatStatus();
 resize();
 requestAnimationFrame(animate);

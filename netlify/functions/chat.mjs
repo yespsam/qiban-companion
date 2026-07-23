@@ -36,16 +36,13 @@ function pickReply(list, text) {
   return list[Math.abs(seed + jitter) % list.length];
 }
 
-// ---------------------------------------------------------------- 真实大模型通道
-// 两种绑定方式（任选）：
-//   1) 站点环境变量：LLM_API_KEY 或 MOONSHOT_API_KEY（全站生效）
-//   2) 用户在应用「模型」面板粘贴自己的 Key：随请求 payload.llm_key 传入（BYOK）
-// 接口为 OpenAI Chat Completions 兼容协议；base_url 只允许服务端环境变量控制，
-// 模型名走白名单，防止本函数被滥用为任意代理。
+// BYOK Kimi takes priority. When no personal key is available, Netlify's
+// automatically injected OpenAI gateway credentials provide the default model.
 const LLM_API_KEY = process.env.LLM_API_KEY || process.env.MOONSHOT_API_KEY || '';
 const LLM_BASE_URL = (process.env.LLM_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
 const LLM_DEFAULT_MODEL = process.env.LLM_MODEL || 'kimi-k2.5';
-const LLM_TIMEOUT_MS = 12000;
+const NETLIFY_GATEWAY_MODEL = process.env.NETLIFY_AI_MODEL || 'gpt-4.1-mini';
+const LLM_TIMEOUT_MS = 7000;
 const LLM_MODEL_WHITELIST = new Set([
   'kimi-k2.5', 'kimi-k2.6',
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'
@@ -60,6 +57,17 @@ function sanitizeLlmKey(value) {
 function sanitizeLlmModel(value) {
   const model = String(value || '').trim();
   return LLM_MODEL_WHITELIST.has(model) ? model : LLM_DEFAULT_MODEL;
+}
+
+function gatewayConfig() {
+  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
+  const baseUrl = String(process.env.OPENAI_BASE_URL || '').replace(/\/+$/, '');
+  return {
+    apiKey,
+    baseUrl,
+    model: NETLIFY_GATEWAY_MODEL,
+    available: Boolean(apiKey && baseUrl)
+  };
 }
 
 export function cleanHistory(value) {
@@ -123,12 +131,17 @@ function parseLLMReply(raw) {
   };
 }
 
-async function callLLM(text, kind, apiKey, model, history) {
-  if (!apiKey) return null;
+async function callLLM(text, kind, history, {
+  apiKey,
+  baseUrl,
+  model,
+  provider
+}) {
+  if (!apiKey || !baseUrl) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
   try {
-    const resp = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -138,7 +151,7 @@ async function callLLM(text, kind, apiKey, model, history) {
         model,
         messages: buildLLMMessages(text, kind, history),
         temperature: 0.78,
-        max_tokens: 400,
+        max_tokens: 320,
         response_format: { type: 'json_object' }
       }),
       signal: controller.signal
@@ -146,15 +159,33 @@ async function callLLM(text, kind, apiKey, model, history) {
     if (!resp.ok) return null;
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || '';
-    return parseLLMReply(content);
+    const parsed = parseLLMReply(content);
+    return parsed ? { ...parsed, provider, model: data.model || model } : null;
   } catch (error) {
-    return null; // 超时/网络/解析失败一律落回罐头库
+    return null;
   } finally {
     clearTimeout(timer);
   }
 }
 
 export const handler = async (event) => {
+  const gateway = gatewayConfig();
+  if (event.httpMethod === 'GET') {
+    return jsonResponse({
+      enabled: gateway.available || Boolean(LLM_API_KEY),
+      default_provider: gateway.available ? 'netlify_ai_gateway' : LLM_API_KEY ? 'kimi' : 'fallback',
+      gateway: {
+        available: gateway.available,
+        model: gateway.model
+      },
+      kimi: {
+        server_key_available: Boolean(LLM_API_KEY),
+        byok_supported: true,
+        default_model: LLM_DEFAULT_MODEL
+      }
+    });
+  }
+
   if (event.httpMethod !== 'POST') {
     return jsonResponse({ error: 'method not allowed' }, 405);
   }
@@ -176,12 +207,24 @@ export const handler = async (event) => {
   const scene = sceneLibrary[sceneId] || sceneLibrary.daily;
   const history = cleanHistory(payload.history);
 
-  // 优先走真实大模型：BYOK（请求自带 Key）优先，其次站点环境变量 Key；
-  // 都没有或调用失败落回罐头库。
-  const llmKey = sanitizeLlmKey(payload.llm_key) || LLM_API_KEY;
-  const llmModel = sanitizeLlmModel(payload.llm_model);
-  const llmBound = Boolean(llmKey);
-  const llm = await callLLM(text, kind, llmKey, llmModel, history);
+  const personalKey = sanitizeLlmKey(payload.llm_key);
+  const kimiKey = personalKey || LLM_API_KEY;
+  const kimiModel = sanitizeLlmModel(payload.llm_model);
+  const llmBound = Boolean(personalKey);
+  let llm = await callLLM(text, kind, history, {
+    apiKey: kimiKey,
+    baseUrl: LLM_BASE_URL,
+    model: kimiModel,
+    provider: 'kimi'
+  });
+  if (!llm && gateway.available) {
+    llm = await callLLM(text, kind, history, {
+      apiKey: gateway.apiKey,
+      baseUrl: gateway.baseUrl,
+      model: gateway.model,
+      provider: 'netlify_ai_gateway'
+    });
+  }
   if (llm) {
     return jsonResponse({
       text: llm.reply,
@@ -197,7 +240,13 @@ export const handler = async (event) => {
       persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
       scene: sceneId,
       mode: 'cloud_llm',
-      llm: { bound: llmBound, model: llmModel, context_turns: history.length }
+      llm: {
+        bound: llmBound,
+        provider: llm.provider,
+        model: llm.model,
+        gateway_available: gateway.available,
+        context_turns: history.length
+      }
     });
   }
 
@@ -225,6 +274,12 @@ export const handler = async (event) => {
     persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
     scene: sceneId,
     mode: 'cloud_scene_reply',
-    llm: { bound: llmBound, model: llmModel, context_turns: history.length }
+    llm: {
+      bound: llmBound,
+      provider: 'fallback',
+      model: llmBound ? kimiModel : gateway.model,
+      gateway_available: gateway.available,
+      context_turns: history.length
+    }
   });
 };

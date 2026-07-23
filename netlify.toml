@@ -9,6 +9,10 @@
   from = "/api/chat"
   to = "/.netlify/functions/chat"
   status = 200
+  [redirects.rate_limit]
+    window_limit = 20
+    window_size = 60
+    aggregate_by = ["ip", "domain"]
 
 [[redirects]]
   from = "/api/voice/status"

@@ -81,6 +81,84 @@ test('handler forwards sanitized history to the cloud model request', async (t) 
   ]);
 });
 
+test('handler uses Netlify AI Gateway when no personal key is present', async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalGatewayKey = process.env.OPENAI_API_KEY;
+  const originalGatewayBase = process.env.OPENAI_BASE_URL;
+  let requestUrl = '';
+  let authorization = '';
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalGatewayKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalGatewayKey;
+    if (originalGatewayBase === undefined) delete process.env.OPENAI_BASE_URL;
+    else process.env.OPENAI_BASE_URL = originalGatewayBase;
+  });
+  process.env.OPENAI_API_KEY = 'netlify-gateway-test-key';
+  process.env.OPENAI_BASE_URL = 'https://gateway.example.test/v1/';
+  globalThis.fetch = async (url, options) => {
+    requestUrl = url;
+    authorization = options.headers.Authorization;
+    return {
+      ok: true,
+      json: async () => ({
+        model: 'gpt-4.1-mini',
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              thinking: '他在接着上一句问，我要直接回应。',
+              reply: '当然记得，我们刚才在聊周末去哪里。',
+              mood: 'happy',
+              action: 'nod'
+            })
+          }
+        }]
+      })
+    };
+  };
+
+  const response = await handler({
+    httpMethod: 'POST',
+    body: JSON.stringify({
+      text: '那你觉得第二个方案怎么样？',
+      persona_short: 'female',
+      history: [
+        { role: 'user', content: '周末去公园还是看电影？' },
+        { role: 'assistant', content: '第二个方案听起来更适合下雨天。' }
+      ]
+    })
+  });
+  const body = JSON.parse(response.body);
+
+  assert.equal(requestUrl, 'https://gateway.example.test/v1/chat/completions');
+  assert.equal(authorization, 'Bearer netlify-gateway-test-key');
+  assert.equal(body.mode, 'cloud_llm');
+  assert.equal(body.llm.provider, 'netlify_ai_gateway');
+  assert.equal(body.llm.bound, false);
+  assert.equal(body.llm.context_turns, 2);
+});
+
+test('chat status reports default gateway availability without exposing credentials', async (t) => {
+  const originalGatewayKey = process.env.OPENAI_API_KEY;
+  const originalGatewayBase = process.env.OPENAI_BASE_URL;
+  t.after(() => {
+    if (originalGatewayKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalGatewayKey;
+    if (originalGatewayBase === undefined) delete process.env.OPENAI_BASE_URL;
+    else process.env.OPENAI_BASE_URL = originalGatewayBase;
+  });
+  process.env.OPENAI_API_KEY = 'hidden-test-key';
+  process.env.OPENAI_BASE_URL = 'https://gateway.example.test/v1';
+
+  const response = await handler({ httpMethod: 'GET' });
+  const body = JSON.parse(response.body);
+
+  assert.equal(body.enabled, true);
+  assert.equal(body.default_provider, 'netlify_ai_gateway');
+  assert.equal(body.gateway.available, true);
+  assert.equal(JSON.stringify(body).includes('hidden-test-key'), false);
+});
+
 test('handler keeps conversation available when the LLM provider fails', async (t) => {
   const originalFetch = globalThis.fetch;
   t.after(() => {

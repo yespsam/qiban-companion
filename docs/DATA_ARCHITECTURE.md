@@ -35,8 +35,10 @@ runtimes do not drift back into different canned replies.
 ## Netlify runtime
 
 `netlify/functions/chat.mjs` is the single production conversation endpoint.
-It tries Kimi first when a valid key is available, then returns a shared
-catalog fallback so the input never remains blocked by a provider outage.
+It tries a personal Kimi key first when one is available, then uses Netlify AI
+Gateway as the default cloud model. A shared catalog fallback keeps the input
+available when both providers are unavailable. The public chat route is rate
+limited per visitor to protect the site's AI credits.
 
 `netlify/functions/voice-*.mjs` use the same shared voice catalog.
 
