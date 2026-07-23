@@ -131,21 +131,25 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.43-conversation-data';
+const modelAssetVersion = 'v0.2.47-presence-ui';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
+const compactModelAssets = window.matchMedia('(max-width: 720px)').matches;
+const characterModelUrl = (slug) => modelUrl(
+  `./assets/models/${slug}${compactModelAssets ? '-mobile' : ''}.glb`
+);
 
 const modelAssets = {
   // One GLB per character. Stable runtime bone motion avoids malformed generated clips.
   female: {
     selection: 'F4',
-    model: modelUrl('./assets/models/xiao-qi.glb'),
+    model: characterModelUrl('xiao-qi'),
     animations: {},
     nativeAnimations: true,
     modeledHands: true
   },
   male: {
     selection: 'M4',
-    model: modelUrl('./assets/models/qi-an.glb'),
+    model: characterModelUrl('qi-an'),
     animations: {},
     nativeAnimations: true,
     modeledHands: true
@@ -184,15 +188,20 @@ const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('./vendor/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: true,
+  powerPreference: 'high-performance'
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, compactModelAssets ? 2 : 2.5));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.12;
+renderer.toneMappingExposure = 0.96;
 renderer.setClearColor(0x000000, 0);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 100);
+const camera = new THREE.PerspectiveCamera(31, 1, 0.1, 100);
 camera.position.set(0, 0.22, 7.2);
 
 const personas = {
@@ -212,7 +221,7 @@ const personas = {
     modelScaleDesktop: 0.78,
     modelScaleMobile: 0.9,
     modelYDesktop: -0.14,
-    modelYMobile: -0.12,
+    modelYMobile: 0.02,
     shoulder: 0.88,
     hip: 0.82,
     stance: 0.18,
@@ -233,9 +242,9 @@ const personas = {
     scale: 1.04,
     idlePoseTime: 3.02,
     modelScaleDesktop: 1.55,
-    modelScaleMobile: 1.5,
+    modelScaleMobile: 1.58,
     modelYDesktop: 0.08,
-    modelYMobile: 0.08,
+    modelYMobile: 0.2,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -256,7 +265,7 @@ const skinPresets = {
       tint: 0xffffff,
       tintStrength: 0,
       emissive: 0.02,
-      exposure: 1.12,
+      exposure: 0.96,
       accessories: { halo: false, ribbons: true, cape: false, orbit: false, badge: true }
     },
     {
@@ -269,7 +278,7 @@ const skinPresets = {
       tint: 0xffd6ea,
       tintStrength: 0.18,
       emissive: 0.05,
-      exposure: 1.16,
+      exposure: 1,
       accessories: { halo: true, ribbons: true, cape: false, orbit: false, badge: true }
     },
     {
@@ -282,7 +291,7 @@ const skinPresets = {
       tint: 0xb8f4ff,
       tintStrength: 0.2,
       emissive: 0.08,
-      exposure: 1.2,
+      exposure: 1.04,
       accessories: { halo: true, ribbons: false, cape: false, orbit: true, badge: true }
     }
   ],
@@ -297,7 +306,7 @@ const skinPresets = {
       tint: 0xffffff,
       tintStrength: 0,
       emissive: 0.02,
-      exposure: 1.1,
+      exposure: 0.94,
       accessories: { halo: false, ribbons: false, cape: false, orbit: false, badge: true }
     },
     {
@@ -310,7 +319,7 @@ const skinPresets = {
       tint: 0x9fd7ff,
       tintStrength: 0.16,
       emissive: 0.06,
-      exposure: 1.12,
+      exposure: 0.98,
       accessories: { halo: false, ribbons: false, cape: false, orbit: true, badge: true }
     },
     {
@@ -323,7 +332,7 @@ const skinPresets = {
       tint: 0xffdf9c,
       tintStrength: 0.18,
       emissive: 0.07,
-      exposure: 1.15,
+      exposure: 1,
       accessories: { halo: true, ribbons: false, cape: false, orbit: false, badge: true }
     }
   ]
@@ -418,6 +427,7 @@ const state = {
   lastPointerMovedAt: 0,
   voiceReady: false,
   voiceError: '',
+  voiceRuntimeStatus: null,
   dialogEnabled: dialogEnabledInPage,
   activeVoiceArchetype: '',
   activeSkin: '',
@@ -439,6 +449,7 @@ const state = {
   builderTimers: [],
   voicePanelOpen: false,
   llmPanelOpen: false,
+  sceneMenuOpen: false,
   // BYOK：应用内绑定的 Kimi 大模型 Key（仅存本机 localStorage，随对话请求下发）
   llmKey: storedValue(browserStorageKeys.llmKey) || '',
   llmModel: storedValue(browserStorageKeys.llmModel) || 'kimi-k2.5',
@@ -518,22 +529,22 @@ const mats = {
   outline: new THREE.MeshBasicMaterial({ color: 0x120d12, side: THREE.BackSide })
 };
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.82);
+const ambient = new THREE.AmbientLight(0xffffff, 0.34);
 scene.add(ambient);
 
-const hemiLight = new THREE.HemisphereLight(0xf4fff5, 0x17211d, 1.16);
+const hemiLight = new THREE.HemisphereLight(0xf7fbff, 0x26332e, 0.78);
 scene.add(hemiLight);
 
-const keyLight = new THREE.DirectionalLight(0xf8ffe9, 3.15);
-keyLight.position.set(-3.2, 4.4, 4.4);
+const keyLight = new THREE.DirectionalLight(0xfff8ef, 2.1);
+keyLight.position.set(-3.4, 4.8, 4.8);
 scene.add(keyLight);
 
-const fillLight = new THREE.PointLight(0xffa4ba, 1.36, 8);
-fillLight.position.set(3.1, 1.8, 2.8);
+const fillLight = new THREE.PointLight(0xffefe5, 0.9, 10);
+fillLight.position.set(0.6, 2.8, 4.6);
 scene.add(fillLight);
 
-const rimLight = new THREE.PointLight(personas.female.accent, 2.65, 9);
-rimLight.position.set(2.8, -0.4, 3.2);
+const rimLight = new THREE.PointLight(personas.female.accent, 1.45, 10);
+rimLight.position.set(2.9, 0.2, 2.6);
 scene.add(rimLight);
 
 const avatar = new THREE.Group();
@@ -1250,7 +1261,7 @@ function setPersona(id) {
   mats.glow.color.setHex(persona.accent);
   rig.heart.main.material.color.setHex(id === 'female' ? 0xff6f9a : 0x8dffc0);
   rimLight.color.setHex(persona.accent);
-  fillLight.color.setHex(id === 'female' ? 0xffa4ba : 0x9cc8ff);
+  fillLight.color.setHex(0xffefe5);
   setVisible(rig.femaleOnly, id === 'female');
   setVisible(rig.maleOnly, id === 'male');
   updateModelHandOverlayMaterials();
@@ -1292,7 +1303,7 @@ function applyPersonaSkin(updateLine = true) {
     rig.heart.main.material.color.setHex(skin.accent);
   }
   rimLight.color.setHex(skin.accent);
-  fillLight.color.setHex(skin.accent);
+  fillLight.color.setHex(0xffefe5);
   if (updateLine) {
     lineEl.textContent = skin.line || personas[state.activePersona].idleLine;
   }
@@ -1497,6 +1508,7 @@ function setMobileHint(text, mode = '') {
 function renderSceneControls() {
   if (!sceneStrip) return;
   sceneStrip.textContent = '';
+  sceneStrip.classList.toggle('expanded', state.sceneMenuOpen);
   interactionScenes.forEach((item) => {
     const button = document.createElement('button');
     button.className = 'scene-chip';
@@ -1505,8 +1517,17 @@ function renderSceneControls() {
     button.textContent = item.name;
     button.classList.toggle('active', item.id === state.activeScene);
     button.setAttribute('aria-pressed', item.id === state.activeScene ? 'true' : 'false');
+    if (item.id === state.activeScene) {
+      button.setAttribute('aria-expanded', state.sceneMenuOpen ? 'true' : 'false');
+    }
     button.addEventListener('click', (event) => {
       event.stopPropagation();
+      if (item.id === state.activeScene && !state.sceneMenuOpen) {
+        state.sceneMenuOpen = true;
+        renderSceneControls();
+        return;
+      }
+      state.sceneMenuOpen = false;
       setInteractionScene(item.id, true);
     });
     sceneStrip.appendChild(button);
@@ -1797,7 +1818,7 @@ function canUseLocalVoiceInputApi() {
   }
 }
 
-function voiceReadyLabel(status = null) {
+function voiceReadyLabel(status = state.voiceRuntimeStatus) {
   const engine = String(status?.tts_engine || '').toLowerCase();
   if (engine.includes('netlify')) return '云端语音';
   try {
@@ -2022,13 +2043,16 @@ function enhanceLoadedMaterial(material) {
   tuneTexture(material.roughnessMap);
   tuneTexture(material.metalnessMap);
   if ('emissiveIntensity' in material) {
-    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.045);
+    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.025);
   }
   if ('roughness' in material) {
-    material.roughness = Math.max(0.42, Math.min(material.roughness || 0.58, 0.62));
+    material.roughness = Math.max(0.58, Math.min(material.roughness || 0.68, 0.78));
   }
   if ('metalness' in material) {
-    material.metalness = Math.min(material.metalness || 0, 0.08);
+    material.metalness = Math.min(material.metalness || 0, 0.04);
+  }
+  if ('specularIntensity' in material) {
+    material.specularIntensity = Math.min(material.specularIntensity || 0.25, 0.32);
   }
   material.needsUpdate = true;
 }
@@ -2048,13 +2072,13 @@ function applyModelSkin(entry) {
     materials.filter(Boolean).forEach((material) => {
       if (material.color) {
         const base = material.userData.qibanBaseColor || material.color;
-        material.color.copy(base).lerp(tintColor, skin.tintStrength);
+        material.color.copy(base).lerp(tintColor, Math.min(skin.tintStrength, 0.04));
       }
       if (material.emissive) {
         material.emissive.copy(emissiveColor).multiplyScalar(skin.emissive);
       }
       if ('roughness' in material) {
-        material.roughness = Math.max(0.34, Math.min(0.7, material.roughness || 0.58));
+        material.roughness = Math.max(0.56, Math.min(0.78, material.roughness || 0.68));
       }
       material.needsUpdate = true;
     });
@@ -2172,6 +2196,7 @@ function loadModel(id) {
   const asset = modelAssets[id];
   if (!asset || !asset.model || modelState.loaded[id] || modelState.loading[id]) return;
   modelState.loading[id] = true;
+  document.body.style.setProperty('--model-progress', '0');
   gltfLoader.load(asset.model, (gltf) => {
     const root = gltf.scene;
     normalizeLoadedModel(root);
@@ -2217,7 +2242,19 @@ function loadModel(id) {
       activateLoadedModel(id);
       resize();
     }
-  }, undefined, () => {
+    document.body.style.setProperty('--model-progress', '1');
+    const otherId = id === 'female' ? 'male' : 'female';
+    const preloadOther = () => loadModel(otherId);
+    if ('requestIdleCallback' in window) {
+      window.requestIdleCallback(preloadOther, { timeout: 4500 });
+    } else {
+      window.setTimeout(preloadOther, 2200);
+    }
+  }, (event) => {
+    if (!event.total || state.activePersona !== id) return;
+    const progress = Math.max(0, Math.min(1, event.loaded / event.total));
+    document.body.style.setProperty('--model-progress', progress.toFixed(3));
+  }, () => {
     modelState.loading[id] = false;
     if (state.activePersona === id && !modelState.active) {
       modelLayer.visible = false;
@@ -2489,9 +2526,9 @@ function applyModelWavePose(entry, elapsed, profile, duration) {
   addBoneRotation(entry, 'Spine01', 0.014 * fade, 0, -0.045 * fade);
   addBoneRotation(entry, 'Spine02', 0.008 * fade, 0, -0.026 * fade);
   addModelArmPose(entry, 'Right',
-    { shoulderY: 0.022 * raise, shoulderZ: -0.24 * raise, x: -1.72 * raise, y: -0.025 * raise, z: -0.78 * raise + shoulderPulse },
-    { x: -0.34 * raise, y: 0.02 * raise, z: -0.34 * raise + wave },
-    { x: 0.025 * raise, y: wave * 0.32, z: wave * 0.48 }
+    { shoulderY: 0.018 * raise, shoulderZ: -0.18 * raise, x: -1.52 * raise, y: -0.02 * raise, z: -0.54 * raise + shoulderPulse },
+    { x: -0.68 * raise, y: 0.025 * raise, z: -0.88 * raise + wave },
+    { x: 0.04 * raise, y: wave * 0.38, z: wave * 0.62 }
   );
   addModelArmPose(entry, 'Left',
     { shoulderZ: 0.03 * fade, x: 0.04 * fade, y: 0.01 * fade, z: 0.02 * fade },
@@ -2588,12 +2625,11 @@ function addModelLookOffset(entry, pointerLag, sway, weight = 1) {
 function modelFrameScaleMultiplier() {
   const mobile = window.innerWidth < 720;
   if (mobile) {
-    const male = state.activePersona === 'male';
     return {
-      wave: male ? 0.72 : 0.8,
+      wave: 0.92,
       nod: 1,
-      heart: male ? 0.72 : 0.82,
-      voice: male ? 0.92 : 0.98
+      heart: 0.94,
+      voice: 0.98
     }[state.action] || 1;
   }
   const actionScale = {
@@ -2606,7 +2642,7 @@ function modelFrameScaleMultiplier() {
 }
 
 function modelFrameXOffset() {
-  return 0;
+  return window.innerWidth < 720 && state.action === 'wave' ? -0.12 : 0;
 }
 
 function applyModelFrameScale(multiplier, yOffset = 0) {
@@ -2960,14 +2996,19 @@ function resize() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
-  camera.position.z = mobile ? 6.7 : 6.45;
-  camera.position.y = mobile ? 0.26 : 0.2;
+  const dialogScale = state.dialogEnabled ? (mobile ? 0.9 : 0.95) : 1;
+  camera.fov = mobile ? 31 : 30;
+  camera.position.z = mobile ? 6.62 : 6.35;
+  camera.position.y = mobile ? 0.3 : 0.22;
   avatar.position.set(0, mobile ? 0.34 : 0.3, 0);
   avatar.scale.setScalar(persona.scale * (mobile ? 0.82 : 1.02));
-  modelLayer.position.set(0, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
+  const dialogLift = state.dialogEnabled ? (mobile ? 0.12 : 0.06) : 0;
+  modelLayer.position.set(0, (mobile ? persona.modelYMobile : persona.modelYDesktop) + dialogLift, 0);
   modelState.baseX = modelLayer.position.x;
   modelState.baseY = modelLayer.position.y;
-  modelState.baseScale = persona.scale * (mobile ? persona.modelScaleMobile : persona.modelScaleDesktop);
+  modelState.baseScale = persona.scale
+    * (mobile ? persona.modelScaleMobile : persona.modelScaleDesktop)
+    * dialogScale;
   modelLayer.scale.setScalar(modelState.baseScale);
   rig.heart.position.x = 0;
   camera.updateProjectionMatrix();
@@ -3073,6 +3114,7 @@ function markVoiceUnavailable(message = '语音未接', detail = '') {
 
 function setDockOpen(open) {
   state.dockOpen = open;
+  document.body.classList.toggle('controls-open', open);
   if (dockEl) dockEl.classList.toggle('open', open);
   if (menuButton) {
     menuButton.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -3685,6 +3727,7 @@ function checkVoiceStatus() {
     .then((response) => response.ok ? response.json() : null)
     .then((status) => {
       if (!status) return;
+      state.voiceRuntimeStatus = status;
       state.voiceReady = !!status.enabled;
       state.voiceError = status.enabled ? '' : '语音未接';
       const voiceBusy = state.voiceLoading || state.speaking || state.awaitingPlayback;
@@ -3736,6 +3779,7 @@ function toggleDialog() {
     });
   }
   checkVoiceStatus();
+  resize();
 }
 
 canvas.addEventListener('pointerdown', (event) => {
@@ -3763,6 +3807,10 @@ canvas.addEventListener('pointercancel', () => {
 });
 
 canvas.addEventListener('click', () => {
+  if (state.sceneMenuOpen) {
+    state.sceneMenuOpen = false;
+    renderSceneControls();
+  }
   if (state.dockOpen) setDockOpen(false);
   if (state.builderOpen) setBuilderOpen(false);
   if (playQueuedAudio()) return;
@@ -3859,6 +3907,10 @@ if (mobileChatForm) {
   });
 }
 document.addEventListener('click', () => {
+  if (state.sceneMenuOpen) {
+    state.sceneMenuOpen = false;
+    renderSceneControls();
+  }
   if (state.voicePanelOpen) setVoicePanelOpen(false);
   if (state.builderOpen) setBuilderOpen(false);
   if (state.dockOpen) setDockOpen(false);

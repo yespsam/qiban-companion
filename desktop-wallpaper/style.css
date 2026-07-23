@@ -984,3 +984,412 @@ body:not(.dialog-active) .mobile-voice-hint {
     font-size: 12px;
   }
 }
+
+/* Presence-first interface */
+:root {
+  --ink: #f7f8f5;
+  --muted: #aeb5b1;
+  --panel: rgba(16, 18, 20, 0.66);
+  --panel-strong: rgba(12, 14, 16, 0.88);
+  --line: rgba(255, 255, 255, 0.14);
+  --shadow: 0 18px 54px rgba(0, 0, 0, 0.24);
+}
+
+#scene {
+  transition: opacity 240ms ease;
+}
+
+body:not(.model-ready) #scene {
+  opacity: 0;
+}
+
+body.controls-open .scene-strip {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+body:not(.model-ready) .mobile-shell::before {
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  border-color: rgba(20, 24, 22, 0.12);
+  border-top-color: var(--accent);
+}
+
+.scene-strip {
+  left: max(14px, env(safe-area-inset-left));
+  top: max(14px, env(safe-area-inset-top));
+  width: auto;
+  max-width: calc(100vw - 80px);
+  display: flex;
+  gap: 6px;
+  overflow: visible;
+  padding: 0;
+  transform: none;
+  scroll-snap-type: none;
+}
+
+.scene-strip .scene-chip:not(.active) {
+  display: none;
+}
+
+.scene-strip.expanded {
+  width: min(304px, calc(100vw - 80px));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(20px);
+}
+
+.scene-strip.expanded .scene-chip {
+  display: flex;
+}
+
+.scene-chip {
+  min-width: 64px;
+  height: 34px;
+  border-color: var(--line);
+  border-radius: 7px;
+  padding: 0 12px;
+  align-items: center;
+  justify-content: center;
+  background: rgba(16, 18, 20, 0.66);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.scene-strip:not(.expanded) .scene-chip.active::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 8px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.scene-chip.active {
+  border-color: transparent;
+  background: var(--accent);
+  color: #0c1310;
+  box-shadow: 0 8px 26px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.mobile-chat {
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 68px);
+  width: min(520px, calc(100vw - 28px));
+  max-height: 122px;
+  gap: 7px;
+  overflow: hidden;
+  mask-image: none;
+}
+
+.mobile-message:nth-last-child(n + 3) {
+  display: none;
+}
+
+.mobile-message {
+  max-width: 82%;
+  gap: 3px;
+  animation: message-in 180ms ease both;
+}
+
+.mobile-bubble-meta {
+  color: rgba(22, 26, 24, 0.56);
+  font-size: 10px;
+}
+
+.mobile-bubble {
+  padding: 9px 12px;
+  border-color: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(18, 20, 22, 0.76);
+  color: #f7f8f5;
+  font-size: 13px;
+  line-height: 1.46;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(18px);
+}
+
+.mobile-bubble.user {
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  background: color-mix(in srgb, var(--accent) 20%, rgba(255, 255, 255, 0.9));
+  color: #101613;
+}
+
+.mobile-voice-bar {
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: min(520px, calc(100vw - 28px));
+  min-height: 52px;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 6px;
+  padding: 5px;
+  border-color: var(--line);
+  border-radius: 8px;
+  background: rgba(14, 16, 18, 0.82);
+  box-shadow: 0 16px 46px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(22px);
+}
+
+.mobile-chat-input {
+  height: 40px;
+  border-radius: 6px;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #f7f8f5;
+  line-height: 40px;
+}
+
+.mobile-mic-btn,
+.mobile-send-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.mobile-mic-btn span,
+.mobile-send-btn span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.mobile-mic-btn::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  width: 8px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-radius: 8px;
+  transform: translateX(-50%);
+}
+
+.mobile-mic-btn::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 19px;
+  width: 16px;
+  height: 9px;
+  border: 2px solid currentColor;
+  border-top: 0;
+  border-radius: 0 0 9px 9px;
+  transform: translateX(-50%);
+}
+
+.mobile-send-btn::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  top: 14px;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.mobile-send-btn::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 19px;
+  width: 16px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.mobile-voice-hint {
+  right: max(22px, env(safe-area-inset-right));
+  left: auto;
+  bottom: calc(max(12px, env(safe-area-inset-bottom)) + 57px);
+  max-width: 180px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(15, 17, 19, 0.58);
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 10px;
+  line-height: 1.5;
+  text-align: right;
+  transform: none;
+  backdrop-filter: blur(12px);
+}
+
+.mobile-voice-hint[data-mode="ready"]:hover {
+  transform: translateY(-1px);
+}
+
+.dock,
+body.mobile-mode .dock,
+body.dialog-active .dock {
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: auto;
+  left: auto;
+  width: auto;
+  max-width: calc(100vw - 24px);
+  transform: none;
+}
+
+.dock.open {
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: auto;
+  left: auto;
+  width: auto;
+  transform: none;
+}
+
+.menu-toggle {
+  width: 44px;
+  height: 44px;
+  border-color: rgba(22, 25, 24, 0.1);
+  background: rgba(247, 248, 245, 0.82);
+  color: #181b1a;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(18px);
+}
+
+.menu-toggle:hover,
+.dock.open .menu-toggle {
+  background: rgba(247, 248, 245, 0.94);
+}
+
+.dock-panel,
+.dock.open .dock-panel {
+  position: absolute;
+  top: 0;
+  right: 52px;
+  width: min(286px, calc(100vw - 78px));
+  max-width: none;
+  padding: 7px;
+  border-color: var(--line);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+  overflow: visible;
+  backdrop-filter: blur(22px);
+}
+
+.primary-controls {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.dock-btn {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  border-radius: 7px;
+  padding: 0 8px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.dock-btn.active {
+  color: #0c1310;
+}
+
+.voice-panel,
+body.mobile-mode .voice-panel {
+  top: calc(max(12px, env(safe-area-inset-top)) + 52px);
+  right: max(12px, env(safe-area-inset-right));
+  bottom: auto;
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.builder-panel,
+body.mobile-mode .builder-panel {
+  top: calc(max(12px, env(safe-area-inset-top)) + 58px);
+  bottom: auto;
+  border-radius: 8px;
+  background: var(--panel-strong);
+}
+
+.llm-panel {
+  border-radius: 8px;
+  background: rgba(12, 14, 16, 0.94);
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .scene-strip {
+    left: max(10px, env(safe-area-inset-left));
+    top: max(10px, env(safe-area-inset-top));
+    max-width: calc(100vw - 68px);
+  }
+
+  .scene-strip.expanded {
+    width: min(296px, calc(100vw - 68px));
+  }
+
+  .scene-chip {
+    min-width: 60px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .mobile-chat,
+  body.mobile-mode .mobile-chat {
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 68px);
+    width: calc(100vw - 20px);
+    max-height: 114px;
+  }
+
+  .mobile-voice-bar {
+    width: calc(100vw - 20px);
+  }
+
+  .mobile-message {
+    max-width: 86%;
+  }
+
+  .mobile-message:nth-last-child(n + 2) {
+    display: none;
+  }
+
+  .dock-panel,
+  .dock.open .dock-panel {
+    width: min(280px, calc(100vw - 68px));
+  }
+
+  .voice-panel,
+  body.mobile-mode .voice-panel {
+    width: min(286px, calc(100vw - 20px));
+  }
+
+  .builder-panel,
+  body.mobile-mode .builder-panel {
+    width: min(344px, calc(100vw - 20px));
+    max-height: 58svh;
+  }
+}
