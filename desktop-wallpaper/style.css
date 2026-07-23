@@ -275,6 +275,10 @@ body.mobile-mode .mobile-shell {
   display: block;
 }
 
+body.dialog-active .mobile-shell {
+  display: block;
+}
+
 body:not(.model-ready) .mobile-shell::before {
   content: "";
   position: absolute;
@@ -300,6 +304,32 @@ body.mobile-mode .builder-panel {
 
 body.mobile-mode .mobile-chat {
   bottom: calc(max(12px, env(safe-area-inset-bottom)) + 152px);
+}
+
+body:not(.dialog-active) .scene-strip,
+body:not(.dialog-active) .mobile-chat,
+body:not(.dialog-active) .mobile-voice-bar,
+body:not(.dialog-active) .mobile-voice-hint {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.scene-strip,
+.mobile-chat,
+.mobile-voice-bar,
+.mobile-voice-hint {
+  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+}
+
+body:not(.dialog-active) .scene-strip {
+  transform: translateX(-50%) translateY(-8px);
+}
+
+body:not(.dialog-active) .mobile-chat,
+body:not(.dialog-active) .mobile-voice-bar,
+body:not(.dialog-active) .mobile-voice-hint {
+  transform: translateX(-50%) translateY(10px);
 }
 
 .scene-strip {
@@ -896,32 +926,6 @@ body.mobile-mode .mobile-chat {
 
   body.dialog-active .dock {
     bottom: calc(max(12px, env(safe-area-inset-bottom)) + 60px);
-  }
-
-  body:not(.dialog-active) .scene-strip,
-  body:not(.dialog-active) .mobile-chat,
-  body:not(.dialog-active) .mobile-voice-bar,
-  body:not(.dialog-active) .mobile-voice-hint {
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .scene-strip,
-  .mobile-chat,
-  .mobile-voice-bar,
-  .mobile-voice-hint {
-    transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
-  }
-
-  body:not(.dialog-active) .scene-strip {
-    transform: translateX(-50%) translateY(-8px);
-  }
-
-  body:not(.dialog-active) .mobile-chat,
-  body:not(.dialog-active) .mobile-voice-bar,
-  body:not(.dialog-active) .mobile-voice-hint {
-    transform: translateX(-50%) translateY(10px);
   }
 
   .voice-panel {

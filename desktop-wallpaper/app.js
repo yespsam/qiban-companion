@@ -105,7 +105,7 @@ function resolveApiBase() {
 
 const voiceApiEnabledInPage = enabledParam('voice', true);
 const browserVoiceFallbackEnabled = enabledParam('browserVoice', false);
-const dialogPreferenceVersion = 'v0.2.42-dialog-panel';
+const dialogPreferenceVersion = 'v0.2.44-chat-visible';
 const shouldRestoreDialog = !params.has('dialog')
   && storedValue(browserStorageKeys.dialogVersion) !== dialogPreferenceVersion;
 if (shouldRestoreDialog) {
