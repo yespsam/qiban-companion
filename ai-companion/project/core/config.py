@@ -24,7 +24,7 @@ class Settings:
     app_name: str = "栖伴"             # 对用户展示的产品名
     female_name: str = "小栖"          # 女声伴侣展示名
     male_name: str = "栖安"            # 男声伴侣展示名
-    llm_backend: str = "mock"         # "llamacpp" | "ollama" | "mock"
+    llm_backend: str = "mock"         # "openai"(云端,推荐) | "llamacpp" | "ollama" | "mock"
     model_id: str = "hermes-3-8b"     # 对应 config/models.yaml 的 key
     llm_temperature: float = 0.72      # 情感伴侣默认略有温度，但不过度发散
     llm_max_tokens: int = 900          # 控制回复长度，避免情绪对话拖成长篇

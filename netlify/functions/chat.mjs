@@ -177,6 +177,92 @@ function pickReply(list, text) {
   return list[Math.abs(seed + jitter) % list.length];
 }
 
+// ---------------------------------------------------------------- 真实大模型通道
+// 配置任一 Key 即启用：LLM_API_KEY 或 MOONSHOT_API_KEY（Netlify 环境变量里设置）。
+// 接口为 OpenAI Chat Completions 兼容协议，可指向 Kimi/DeepSeek/OpenAI 等。
+const LLM_API_KEY = process.env.LLM_API_KEY || process.env.MOONSHOT_API_KEY || '';
+const LLM_BASE_URL = (process.env.LLM_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
+const LLM_MODEL = process.env.LLM_MODEL || 'moonshot-v1-8k';
+const LLM_TIMEOUT_MS = 12000;
+
+const COMPANION_PROFILE = {
+  female: { name: '小栖', desc: '女性人格，软糯亲昵，自称「人家」或「我」' },
+  male: { name: '栖安', desc: '男性人格，沉稳可靠，自称「我」' }
+};
+
+function buildLLMMessages(text, kind) {
+  const p = COMPANION_PROFILE[kind] || COMPANION_PROFILE.female;
+  const system = [
+    `你是「${p.name}」，主人的贴心 AI 伴侣（${p.desc}）。你们通过语音对话，主人刚对你说了一句话。`,
+    '规则：',
+    '1. 必须严格输出 JSON（不要输出任何其他文字、不要用代码块）：',
+    '{"thinking":"...","reply":"...","mood":"happy|calm|sad|sleepy 之一","action":"idle|nod|heart|wave|voice|walk|run 之一"}',
+    '2. reply 是给主人听的话：像真人说话，短、口语、1~3 句；先接住主人的情绪，再直接回应他说的内容——必须针对他的话作答，禁止背模板、禁止客服腔。',
+    '3. thinking 是你的真实心声，按三拍流淌：先察觉主人话里的细节（可引用他的原词），再写你此刻真实的情绪（心疼、开心、委屈、犹豫、担心都可以），最后写你打算怎么回应（可带一点自我叮嘱，比如「别急着讲道理」「先抱抱他」）。第一人称、口语、一两句到三四句，禁止写成指导说明或分析提纲。',
+    '4. mood 选你此刻的情绪；action 选配合的肢体动作：安慰或亲密=heart，认同=nod，打招呼=wave，聊天=voice，散步=walk，其他=idle。'
+  ].join('\n');
+  return [
+    { role: 'system', content: system },
+    { role: 'user', content: text }
+  ];
+}
+
+function parseLLMReply(raw) {
+  if (!raw) return null;
+  let text = String(raw).trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  let data;
+  try {
+    data = JSON.parse(text.slice(start, end + 1));
+  } catch (error) {
+    return null;
+  }
+  const reply = String(data.reply || '').trim();
+  if (!reply) return null;
+  const moodPool = new Set(['happy', 'calm', 'sad', 'sleepy']);
+  const actionPool = new Set(['idle', 'nod', 'heart', 'wave', 'voice', 'walk', 'run']);
+  return {
+    reply: reply.slice(0, 300),
+    thinking: String(data.thinking || '').trim().slice(0, 400),
+    mood: moodPool.has(data.mood) ? data.mood : 'calm',
+    action: actionPool.has(data.action) ? data.action : 'voice'
+  };
+}
+
+async function callLLM(text, kind) {
+  if (!LLM_API_KEY) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+  try {
+    const resp = await fetch(`${LLM_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${LLM_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages: buildLLMMessages(text, kind),
+        temperature: 0.78,
+        max_tokens: 400,
+        response_format: { type: 'json_object' }
+      }),
+      signal: controller.signal
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    return parseLLMReply(content);
+  } catch (error) {
+    return null; // 超时/网络/解析失败一律落回罐头库
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return jsonResponse({ error: 'method not allowed' }, 405);
@@ -197,6 +283,27 @@ export const handler = async (event) => {
   const kind = personaKind(payload.persona || payload.persona_short);
   const sceneId = pickScene(text, String(payload.scene || 'daily'));
   const scene = sceneLibrary[sceneId] || sceneLibrary.daily;
+
+  // 优先走真实大模型：按主人的话生成回应；未配置 Key 或调用失败落回罐头库。
+  const llm = await callLLM(text, kind);
+  if (llm) {
+    return jsonResponse({
+      text: llm.reply,
+      thinking: llm.thinking,
+      emotion: {
+        mood: llm.mood,
+        affection: kind === 'female' ? 74 : 70,
+        user_mood: llm.mood === 'sleepy' ? '困倦' : '平静'
+      },
+      actions: [
+        { target: 'companion', action: llm.action, scene: sceneId }
+      ],
+      persona_id: kind === 'male' ? 'male_companion' : 'female_companion',
+      scene: sceneId,
+      mode: 'cloud_llm'
+    });
+  }
+
   const reply = pickReply(scene[kind] || scene.female, text);
   const thinkingPool = (thinkingLibrary[sceneId] || thinkingLibrary.daily)[kind]
     || thinkingLibrary[sceneId].female;

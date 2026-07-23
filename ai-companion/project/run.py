@@ -27,7 +27,7 @@ def main() -> int:
         from core.memory import MemoryStore
         from core.emotion import EmotionTracker
         from core.engine import CompanionEngine
-        from core.llm import create_backend
+        from core.llm import create_backend_with_fallback as create_backend
         backend = create_backend(settings)
         engine = CompanionEngine(
             settings, backend, PersonaManager(),

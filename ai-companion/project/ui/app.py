@@ -84,7 +84,7 @@ class HermesState:
         # core 必装：ImportError 直接向上传播
         from core.emotion import EmotionTracker
         from core.engine import CompanionEngine
-        from core.llm import create_backend
+        from core.llm import create_backend_with_fallback as create_backend
         from core.memory import MemoryStore
         from core.persona import PersonaManager
 

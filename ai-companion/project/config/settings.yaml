@@ -3,7 +3,14 @@ tier: standard            # lite | standard | pro，hardware_detect 会给出建
 app_name: 栖伴
 female_name: 小栖
 male_name: 栖安
-llm_backend: mock         # llamacpp | ollama | mock（首次安装后建议改为 llamacpp 或 ollama）
+# ---- 对话大脑 ----
+# openai=云端大模型（推荐！真正按主人的话生成回应，需设置环境变量）：
+#   QIBAN_LLM_API_KEY=你的Key           （必填，Kimi/DeepSeek/OpenAI 均可）
+#   QIBAN_LLM_BASE_URL=https://api.moonshot.cn/v1   （可选，默认 Kimi）
+#   QIBAN_LLM_MODEL=moonshot-v1-8k                  （可选）
+#   未配 Key 时自动回退 mock 罐头模板，不会报错。
+# llamacpp=本地 GGUF 模型 | ollama=本地 Ollama | mock=罐头模板（离线兜底）
+llm_backend: openai
 model_id: hermes-3-8b
 llm_temperature: 0.72     # 情感陪伴更自然：有温度但不发散
 llm_max_tokens: 900       # 手机端语音回复不宜过长

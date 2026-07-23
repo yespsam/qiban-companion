@@ -71,5 +71,5 @@ def test_load_repo_default_settings():
     """仓库自带的 config/settings.yaml 必须能被契约加载。"""
     s = load_settings("config/settings.yaml")
     assert s.tier in {"lite", "standard", "pro"}
-    assert s.llm_backend in {"llamacpp", "ollama", "mock"}
+    assert s.llm_backend in {"llamacpp", "ollama", "openai", "mock"}
     assert s.model_id
