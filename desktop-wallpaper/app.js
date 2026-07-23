@@ -115,7 +115,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.35-second-motion-context';
+const modelAssetVersion = 'v0.2.36-latest-model-second-motion';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
@@ -224,11 +224,11 @@ const personas = {
     panel: 0xb7ffd1,
     cheek: 0xf0a996,
     scale: 1.04,
-    idlePoseTime: 0.9,
-    modelScaleDesktop: 0.74,
-    modelScaleMobile: 0.82,
-    modelYDesktop: -0.26,
-    modelYMobile: -0.22,
+    idlePoseTime: 3.02,
+    modelScaleDesktop: 1.55,
+    modelScaleMobile: 1.15,
+    modelYDesktop: 0.08,
+    modelYMobile: 0.08,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -2494,24 +2494,37 @@ function addModelArmPose(entry, side, upper = {}, fore = {}, hand = {}) {
 
 function applyModelNaturalBase(entry, t, breath, sway, pointerLag, weight = 1, includeArms = true) {
   const profile = currentMotionProfile();
-  addBonePosition(entry, 'Hips', 0, breath * 0.018 * weight, 0);
-  addBoneRotation(entry, 'Hips', breath * 0.018 * weight, 0, sway * 0.18 * weight);
-  addBoneRotation(entry, 'Spine', 0.018 + breath * 0.32 * weight, 0, sway * 0.28 * weight);
-  addBoneRotation(entry, 'Spine01', 0.012 + breath * 0.24 * weight, 0, sway * 0.18 * weight);
-  addBoneRotation(entry, 'Spine02', 0.006 + breath * 0.14 * weight, 0, sway * 0.12 * weight);
-  addBoneRotation(entry, 'neck', -state.pointerY * 0.035 * pointerLag * weight, state.pointerX * 0.06 * pointerLag * weight, -sway * 0.12 * weight);
+  const drift = Math.sin(t * 0.42 * profile.speed) * 0.012 * profile.sway * weight;
+  const settle = Math.sin(t * 1.18 * profile.speed + 0.7) * 0.006 * weight;
+
+  addBonePosition(entry, 'Hips', drift * 0.24, breath * 0.014 * weight, 0);
+  addBoneRotation(entry, 'Hips', -0.006 * weight + breath * 0.012 * weight, drift * 0.12, sway * 0.12 * weight);
+  addBoneRotation(entry, 'Spine', 0.022 * weight + breath * 0.24 * weight, -drift * 0.08, sway * 0.22 * weight);
+  addBoneRotation(entry, 'Spine01', 0.016 * weight + breath * 0.18 * weight, -drift * 0.05, sway * 0.16 * weight);
+  addBoneRotation(entry, 'Spine02', 0.01 * weight + breath * 0.1 * weight, -drift * 0.03, sway * 0.08 * weight);
+  addBoneRotation(entry, 'neck',
+    -state.pointerY * 0.03 * pointerLag * weight + settle * 0.42,
+    state.pointerX * 0.045 * pointerLag * weight,
+    -sway * 0.08 * weight
+  );
   addBoneRotation(entry, 'Head',
-    -state.pointerY * 0.08 * pointerLag * weight + Math.sin(t * 1.08 * profile.speed) * 0.01,
-    state.pointerX * 0.17 * pointerLag * weight,
-    -sway * 0.32 * weight
+    -state.pointerY * 0.068 * pointerLag * weight + Math.sin(t * 0.9 * profile.speed) * 0.01,
+    state.pointerX * 0.14 * pointerLag * weight + drift * 0.06,
+    -sway * 0.22 * weight
   );
   if (includeArms) {
-    addBoneRotation(entry, 'LeftShoulder', 0, 0, -1.34 + sway * 0.08 * weight);
-    addBoneRotation(entry, 'RightShoulder', 0, 0, 1.34 + sway * 0.08 * weight);
-    addBoneRotation(entry, 'LeftArm', 1.16, 0.08, -0.28 + sway * 0.04 * weight);
-    addBoneRotation(entry, 'RightArm', 1.16, -0.08, 0.28 + sway * 0.04 * weight);
-    addBoneRotation(entry, 'LeftForeArm', 0.12, 0, -0.1);
-    addBoneRotation(entry, 'RightForeArm', 0.12, 0, 0.1);
+    const leftRelax = -1.12 + sway * 0.08 * weight + settle * 0.8;
+    const rightRelax = 1.12 + sway * 0.08 * weight - settle * 0.8;
+    addModelArmPose(entry, 'Left',
+      { shoulderZ: leftRelax, x: 0.78 + breath * 0.18, z: -0.12 + sway * 0.035 },
+      { x: 0.12 + settle * 0.5, z: -0.06 },
+      { x: -0.02, y: 0.01, z: -0.05 + settle * 0.5 }
+    );
+    addModelArmPose(entry, 'Right',
+      { shoulderZ: rightRelax, x: 0.78 + breath * 0.18, z: 0.12 + sway * 0.035 },
+      { x: 0.12 - settle * 0.5, z: 0.06 },
+      { x: -0.02, y: -0.01, z: 0.05 - settle * 0.5 }
+    );
   }
 }
 
@@ -2664,7 +2677,7 @@ function modelFrameScaleMultiplier() {
   const mobile = window.innerWidth < 720;
   if (mobile) {
     return {
-      wave: 0.98,
+      wave: 0.86,
       nod: 1,
       heart: 0.98,
       voice: 0.98
@@ -2786,12 +2799,12 @@ function updateModelPose(t, delta = 0) {
     addBoneRotation(entry, 'Spine', 0.012 * envelope, 0, -0.026 * envelope);
     addBoneRotation(entry, 'Spine01', 0.014 * envelope, 0, -0.036 * envelope);
     addBoneRotation(entry, 'Spine02', 0.008 * envelope, 0, -0.02 * envelope);
-    addBoneRotation(entry, 'RightShoulder', 0, 0.022 * raise, -0.24 * raise);
-    addBoneRotation(entry, 'RightArm', -1.72 * raise, -0.025 * raise, -0.78 * raise);
-    addBoneRotation(entry, 'RightForeArm', -0.34 * raise, 0.02 * raise, -0.34 * raise + flutter);
-    addBoneRotation(entry, 'RightHand', 0, 0, flutter * 0.48);
-    addBoneRotation(entry, 'LeftArm', 0.024 * envelope, 0.02 * envelope, 0.045 * envelope);
-    addBoneRotation(entry, 'Head', -0.008 * envelope, 0, 0.028 * envelope);
+    addBoneRotation(entry, 'LeftShoulder', 0, -0.022 * raise, 0.24 * raise);
+    addBoneRotation(entry, 'LeftArm', -1.2 * raise, 0.025 * raise, 0.78 * raise);
+    addBoneRotation(entry, 'LeftForeArm', -1.15 * raise, -0.02 * raise, 0.34 * raise - flutter);
+    addBoneRotation(entry, 'LeftHand', 0, 0, -flutter * 0.48);
+    addBoneRotation(entry, 'RightArm', 0.024 * envelope, -0.02 * envelope, -0.045 * envelope);
+    addBoneRotation(entry, 'Head', -0.008 * envelope, 0, -0.028 * envelope);
     finishActionIfNeeded(elapsed, duration);
   }
 
@@ -2823,12 +2836,6 @@ function updateModelPose(t, delta = 0) {
     addBonePosition(entry, 'Hips', 0, 0.012 * envelope, 0);
     addBoneRotation(entry, 'Spine', 0.045 * envelope, 0, pulse);
     addBoneRotation(entry, 'Spine01', 0.035 * envelope, 0, pulse * 0.6);
-    addBoneRotation(entry, 'LeftShoulder', 0, 0, 0.1 * envelope);
-    addBoneRotation(entry, 'RightShoulder', 0, 0, -0.1 * envelope);
-    addBoneRotation(entry, 'LeftArm', -0.22 * envelope, 0.12 * envelope, 0.46 * envelope);
-    addBoneRotation(entry, 'RightArm', -0.22 * envelope, -0.12 * envelope, -0.46 * envelope);
-    addBoneRotation(entry, 'LeftForeArm', -0.16 * envelope, 0, -0.48 * envelope);
-    addBoneRotation(entry, 'RightForeArm', -0.16 * envelope, 0, 0.48 * envelope);
     addBoneRotation(entry, 'Head', -0.018 * envelope, 0, -pulse);
     rig.heart.visible = true;
     rig.heart.position.y = 1.7 + easeOutCubic(p) * 0.34;
@@ -3037,8 +3044,8 @@ function resize() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
-  camera.position.z = mobile ? 7.55 : 6.85;
-  camera.position.y = mobile ? 0.3 : 0.22;
+  camera.position.z = mobile ? 6.7 : 6.45;
+  camera.position.y = mobile ? 0.26 : 0.2;
   avatar.position.set(0, mobile ? 0.34 : 0.3, 0);
   avatar.scale.setScalar(persona.scale * (mobile ? 0.82 : 1.02));
   modelLayer.position.set(0, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
