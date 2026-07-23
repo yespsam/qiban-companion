@@ -3,6 +3,10 @@ import {
   companionProfiles,
   interactionScenes
 } from '../../shared/companion-data.mjs';
+import {
+  contextualFallbackReply,
+  inferSceneId
+} from '../../shared/fallback-dialogue.mjs';
 
 const sceneLibrary = Object.fromEntries(interactionScenes.map((scene) => [scene.id, {
   mood: scene.mood,
@@ -22,15 +26,6 @@ function cleanText(value) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 180);
-}
-
-function pickScene(text, requested) {
-  if (/晚安|睡|困|休息/.test(text)) return 'goodnight';
-  if (/想你|喜欢|抱|亲|爱/.test(text)) return 'miss';
-  if (/累|难受|委屈|不开心|烦|崩|压力|害怕/.test(text)) return 'comfort';
-  if (/走|散步|出去/.test(text)) return 'walk';
-  if (/工作|学习|专注|开始做|任务/.test(text)) return 'focus';
-  return sceneLibrary[requested] ? requested : 'daily';
 }
 
 function pickReply(list, text) {
@@ -177,7 +172,7 @@ export const handler = async (event) => {
   }
 
   const kind = personaKind(payload.persona || payload.persona_short);
-  const sceneId = pickScene(text, String(payload.scene || 'daily'));
+  const sceneId = inferSceneId(text, String(payload.scene || 'daily'));
   const scene = sceneLibrary[sceneId] || sceneLibrary.daily;
   const history = cleanHistory(payload.history);
 
@@ -206,7 +201,12 @@ export const handler = async (event) => {
     });
   }
 
-  const reply = pickReply(scene[kind] || scene.female, text);
+  const reply = contextualFallbackReply({
+    text,
+    kind,
+    scene: sceneId,
+    history
+  });
   const thinkingPool = (thinkingLibrary[sceneId] || thinkingLibrary.daily)[kind]
     || thinkingLibrary[sceneId].female;
   const thinking = pickReply(thinkingPool, `${text}#think`);

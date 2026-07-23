@@ -28,6 +28,10 @@ Do not copy these records into either runtime.
 Kimi API keys also stay in browser storage and are sent only with chat
 requests. They are not written to Git or the conversation store.
 
+`shared/fallback-dialogue.mjs` owns the context-aware reply fallback used by
+both the browser and Netlify. Keep network-failure behavior there so the two
+runtimes do not drift back into different canned replies.
+
 ## Netlify runtime
 
 `netlify/functions/chat.mjs` is the single production conversation endpoint.

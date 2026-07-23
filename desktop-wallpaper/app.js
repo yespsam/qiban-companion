@@ -11,6 +11,7 @@ import {
   loadConversation,
   saveConversation
 } from '../shared/conversation-store.mjs';
+import { contextualFallbackReply } from '../shared/fallback-dialogue.mjs';
 import { resolveApiBaseUrl } from '../shared/runtime-config.mjs';
 
 const canvas = document.getElementById('scene');
@@ -1473,23 +1474,12 @@ function sceneOpening(sceneConfig = currentInteractionScene()) {
 }
 
 function sceneReply(sceneConfig, userText = '') {
-  const personaKind = activePersonaKind();
-  const replies = sceneConfig.replies[personaKind] || sceneConfig.replies.female || [];
-  const normalized = userText.trim();
-  if (/晚安|睡|困|休息/.test(normalized)) {
-    const sleepScene = interactionScenes.find((item) => item.id === 'goodnight') || sceneConfig;
-    return (sleepScene.replies[personaKind] || sleepScene.replies.female || replies)[0] || sceneOpening(sleepScene);
-  }
-  if (/想你|喜欢|抱|亲|爱/.test(normalized)) {
-    const missScene = interactionScenes.find((item) => item.id === 'miss') || sceneConfig;
-    return (missScene.replies[personaKind] || missScene.replies.female || replies)[0] || sceneOpening(missScene);
-  }
-  if (/累|难受|委屈|不开心|烦|崩|压力|害怕/.test(normalized)) {
-    const comfortScene = interactionScenes.find((item) => item.id === 'comfort') || sceneConfig;
-    return (comfortScene.replies[personaKind] || comfortScene.replies.female || replies)[0] || sceneOpening(comfortScene);
-  }
-  const index = Math.abs([...normalized].reduce((sum, char) => sum + char.charCodeAt(0), state.interactionCount)) % Math.max(1, replies.length);
-  return replies[index] || sceneOpening(sceneConfig);
+  return contextualFallbackReply({
+    text: userText,
+    kind: activePersonaKind(),
+    scene: sceneConfig.id,
+    history: state.conversationHistory.slice(0, -1)
+  });
 }
 
 function setMobileHint(text, mode = '') {
