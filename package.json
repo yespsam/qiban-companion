@@ -3,7 +3,15 @@
   "version": "0.2.20",
   "private": true,
   "type": "module",
+  "scripts": {
+    "build:model:male": "node tools/build-browser-model.mjs male"
+  },
   "dependencies": {
     "@andresaya/edge-tts": "^1.8.0"
+  },
+  "devDependencies": {
+    "@gltf-transform/cli": "^4.4.1",
+    "@gltf-transform/core": "^4.4.1",
+    "@gltf-transform/extensions": "^4.4.1"
   }
 }

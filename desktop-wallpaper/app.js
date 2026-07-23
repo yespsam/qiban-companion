@@ -115,19 +115,22 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.22-llm-modal-1';
+const modelAssetVersion = 'v0.2.34-male-hd-layout';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 
 const modelAssets = {
-  // 每个角色只有一个 GLB：本体(网格/贴图/蒙皮) + 全部动作动画 clip（按 idle/walk/... 命名），
-  // 动作切换零网络请求；加载后见 loadModel 内的 clip 注册。
+  // One GLB per character. Stable runtime bone motion avoids malformed generated clips.
   female: {
     model: modelUrl('./assets/models/xiao-qi.glb'),
-    animations: {}
+    animations: {},
+    nativeAnimations: false,
+    modeledHands: true
   },
   male: {
     model: modelUrl('./assets/models/qi-an.glb'),
-    animations: {}
+    animations: {},
+    nativeAnimations: false,
+    modeledHands: true
   }
 };
 
@@ -221,11 +224,11 @@ const personas = {
     panel: 0xb7ffd1,
     cheek: 0xf0a996,
     scale: 1.04,
-    idlePoseTime: 0.9,
-    modelScaleDesktop: 0.74,
-    modelScaleMobile: 0.82,
-    modelYDesktop: -0.26,
-    modelYMobile: -0.22,
+    idlePoseTime: 3.02,
+    modelScaleDesktop: 1.1,
+    modelScaleMobile: 1.15,
+    modelYDesktop: -0.08,
+    modelYMobile: 0.08,
     shoulder: 1.04,
     hip: 0.76,
     stance: 0.14,
@@ -2094,10 +2097,10 @@ function enhanceLoadedMaterial(material) {
   tuneTexture(material.roughnessMap);
   tuneTexture(material.metalnessMap);
   if ('emissiveIntensity' in material) {
-    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.12);
+    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.045);
   }
   if ('roughness' in material) {
-    material.roughness = Math.max(0.38, Math.min(material.roughness || 0.62, 0.68));
+    material.roughness = Math.max(0.42, Math.min(material.roughness || 0.58, 0.62));
   }
   if ('metalness' in material) {
     material.metalness = Math.min(material.metalness || 0, 0.08);
@@ -2141,7 +2144,7 @@ function updateCosmeticLayer() {
   const skin = currentSkin();
   const features = skin.accessories || {};
   const accent = new THREE.Color(skin.accent);
-  cosmeticLayer.visible = true;
+  cosmeticLayer.visible = stageEnabled;
   cosmeticLayer.children.forEach((child) => {
     if (child.material && child.material.color) {
       child.material.color.copy(accent);
@@ -2254,9 +2257,9 @@ function loadModel(id) {
       activeAction: null,
       hasFingerBones: false
     };
-    entry.hasFingerBones = modelHasFingerBones(entry);
-    // 合并版 GLB：本体自带全部动作 clip（按动作名命名），加载即注册，动作切换零请求。
-    (gltf.animations || []).forEach((clip) => {
+    entry.hasFingerBones = modelHasFingerBones(entry) || !!asset.modeledHands;
+    // Native clips remain available for future vetted assets.
+    (asset.nativeAnimations === false ? [] : gltf.animations || []).forEach((clip) => {
       const name = clip.name;
       if (!runtimeModelActions.has(name)) return;
       if (!Number.isFinite(clip.duration) || clip.duration <= 0) return;
@@ -2357,13 +2360,14 @@ function poseModelAnimation(entry, name, time) {
       item.stop();
     }
   });
-  if (entry.activeAnimation !== `pose:${name}`) {
-    action.reset().play();
-    entry.activeAnimation = `pose:${name}`;
-  }
+  action.reset().play();
+  action.enabled = true;
+  action.setEffectiveWeight(1);
+  entry.activeAnimation = `pose:${name}`;
   entry.activeAction = action;
   action.paused = false;
-  entry.mixer.setTime(Math.max(0, Math.min(time, action.getClip().duration - 0.001)));
+  entry.mixer.time = 0;
+  entry.mixer.update(Math.max(0, Math.min(time, action.getClip().duration - 0.001)));
   action.paused = true;
   return true;
 }
@@ -2478,16 +2482,16 @@ function applyModelNaturalBase(entry, t, breath, sway, pointerLag, weight = 1, i
   );
 
   if (includeArms) {
-    const leftRelax = -1.2 + sway * 0.08 * weight + settle * 0.8;
-    const rightRelax = 1.2 + sway * 0.08 * weight - settle * 0.8;
+    const leftRelax = -1.12 + sway * 0.08 * weight + settle * 0.8;
+    const rightRelax = 1.12 + sway * 0.08 * weight - settle * 0.8;
     addModelArmPose(entry, 'Left',
-      { shoulderZ: leftRelax, x: 0.94 + breath * 0.18, y: 0.06, z: -0.2 + sway * 0.035 },
-      { x: 0.18 + settle * 0.5, z: -0.08 },
+      { shoulderZ: leftRelax, x: 0.78 + breath * 0.18, z: -0.12 + sway * 0.035 },
+      { x: 0.12 + settle * 0.5, z: -0.06 },
       { x: -0.02, y: 0.01, z: -0.05 + settle * 0.5 }
     );
     addModelArmPose(entry, 'Right',
-      { shoulderZ: rightRelax, x: 0.94 + breath * 0.18, y: -0.06, z: 0.2 + sway * 0.035 },
-      { x: 0.18 - settle * 0.5, z: 0.08 },
+      { shoulderZ: rightRelax, x: 0.78 + breath * 0.18, z: 0.12 + sway * 0.035 },
+      { x: 0.12 - settle * 0.5, z: 0.06 },
       { x: -0.02, y: -0.01, z: 0.05 - settle * 0.5 }
     );
   }
@@ -2550,7 +2554,7 @@ function applyModelWavePose(entry, elapsed, profile, duration) {
   const p = modelActionProgress(elapsed, duration);
   const fade = modelActionFade(elapsed, duration, 0.2);
   const raise = Math.min(smoothStep01(clamp01(p * 2.2)), smoothStep01(clamp01((1 - p) * 2.8))) * fade;
-  const wave = Math.sin(elapsed * 10.2 * profile.speed) * 0.34 * raise;
+  const wave = Math.sin(elapsed * 8.2 * profile.speed) * 0.105 * raise;
   const shoulderPulse = Math.sin(p * Math.PI * 2) * 0.035 * raise;
   addBonePosition(entry, 'Hips', -0.006 * fade, 0.012 * fade, 0);
   addBoneRotation(entry, 'Hips', 0, 0, 0.026 * fade);
@@ -2558,9 +2562,9 @@ function applyModelWavePose(entry, elapsed, profile, duration) {
   addBoneRotation(entry, 'Spine01', 0.014 * fade, 0, -0.045 * fade);
   addBoneRotation(entry, 'Spine02', 0.008 * fade, 0, -0.026 * fade);
   addModelArmPose(entry, 'Right',
-    { shoulderY: 0.045 * raise, shoulderZ: -0.16 * raise, x: -1.08 * raise, y: -0.04 * raise, z: -0.54 * raise + shoulderPulse },
-    { x: -0.34 * raise, y: 0.02 * raise, z: -0.44 * raise + wave },
-    { x: 0.04 * raise, y: wave * 0.46, z: wave * 0.5 }
+    { shoulderY: 0.022 * raise, shoulderZ: -0.24 * raise, x: -1.72 * raise, y: -0.025 * raise, z: -0.78 * raise + shoulderPulse },
+    { x: -0.34 * raise, y: 0.02 * raise, z: -0.34 * raise + wave },
+    { x: 0.025 * raise, y: wave * 0.32, z: wave * 0.48 }
   );
   addModelArmPose(entry, 'Left',
     { shoulderZ: 0.03 * fade, x: 0.04 * fade, y: 0.01 * fade, z: 0.02 * fade },
@@ -2601,14 +2605,14 @@ function applyModelHeartPose(entry, elapsed, profile, duration) {
   addBoneRotation(entry, 'Spine01', 0.036 * fade, 0, pulse * 0.65);
   addBoneRotation(entry, 'Spine02', 0.018 * fade, 0, pulse * 0.35);
   addModelArmPose(entry, 'Left',
-    { shoulderZ: 0.16 * gather, x: -0.52 * gather, y: 0.15 * gather, z: 0.62 * gather },
-    { x: -0.22 * gather, z: -0.66 * gather },
-    { x: 0.04 * gather, y: -0.05 * gather, z: -0.18 * gather }
+    { shoulderZ: 0.1 * gather, x: -0.22 * gather, y: 0.12 * gather, z: 0.46 * gather },
+    { x: -0.16 * gather, z: -0.48 * gather },
+    { x: 0.03 * gather, y: -0.035 * gather, z: -0.12 * gather }
   );
   addModelArmPose(entry, 'Right',
-    { shoulderZ: -0.16 * gather, x: -0.52 * gather, y: -0.15 * gather, z: -0.62 * gather },
-    { x: -0.22 * gather, z: 0.66 * gather },
-    { x: 0.04 * gather, y: 0.05 * gather, z: 0.18 * gather }
+    { shoulderZ: -0.1 * gather, x: -0.22 * gather, y: -0.12 * gather, z: -0.46 * gather },
+    { x: -0.16 * gather, z: 0.48 * gather },
+    { x: 0.03 * gather, y: 0.035 * gather, z: 0.12 * gather }
   );
   addBoneRotation(entry, 'Head', -0.024 * fade, 0, -pulse * 0.8);
   rig.heart.visible = true;
@@ -2628,8 +2632,8 @@ function applyModelVoicePose(entry, t, elapsed, profile, duration, voiceActive) 
   addBoneRotation(entry, 'neck', syllable * 0.012 * fade, Math.sin(t * 1.8) * 0.01 * fade, 0);
   addBoneRotation(entry, 'Head', syllable * 0.024 * fade, Math.sin(t * 2.1) * 0.022 * fade, 0.012 * fade);
   addModelArmPose(entry, 'Right',
-    { shoulderZ: -0.08 * fade, x: -0.28 * fade + beat * 0.08, y: -0.08 * fade, z: -0.34 * fade },
-    { x: -0.12 * fade, z: -0.28 * fade + beat * 0.16 },
+    { shoulderZ: -0.06 * fade, x: -0.16 * fade + beat * 0.05, y: -0.05 * fade, z: -0.28 * fade },
+    { x: -0.08 * fade, z: -0.22 * fade + beat * 0.1 },
     { y: -0.02 * fade, z: beat * 0.08 }
   );
   addModelArmPose(entry, 'Left',
@@ -2766,14 +2770,20 @@ function updateModelPose(t, delta = 0) {
     const voiceActive = state.voiceLoading || state.speaking || state.awaitingPlayback;
     const duration = modelNativeActionDuration(state.action, profile, voiceActive);
     playModelAnimation(entry, state.action);
-    entry.mixer.update(delta * profile.action);
+    const actionSpeed = state.action === 'idle' ? 0.52 : profile.action;
+    entry.mixer.update(delta * actionSpeed);
+    if (state.action === 'idle') {
+      addBoneRotation(entry, 'LeftUpLeg', 0, 0, -0.022);
+      addBoneRotation(entry, 'RightUpLeg', 0, 0, 0.022);
+      addBoneRotation(entry, 'LeftLeg', -0.008, 0, 0.006);
+      addBoneRotation(entry, 'RightLeg', -0.008, 0, -0.006);
+    }
     applyNativeActionPresentation(entry, state.action, t, elapsed, profile, duration, voiceActive);
     return;
   }
 
   resetModelForProceduralPose(entry);
-  const actionOwnsArms = state.action === 'heart' || state.action === 'voice';
-  applyModelNaturalBase(entry, t, breath, sway, pointerLag, state.action === 'voice' ? 0.72 : 1, !actionOwnsArms);
+  applyModelNaturalBase(entry, t, breath, sway, pointerLag, state.action === 'voice' ? 0.72 : 1, true);
 
   if (state.action === 'walk' || state.action === 'run') {
     const isRun = state.action === 'run';
@@ -3002,8 +3012,8 @@ function resize() {
   renderer.setSize(width, height, false);
   camera.aspect = width / height;
   const mobile = width < 720;
-  camera.position.z = mobile ? 7.55 : 6.85;
-  camera.position.y = mobile ? 0.3 : 0.22;
+  camera.position.z = mobile ? 6.7 : 6.45;
+  camera.position.y = mobile ? 0.26 : 0.2;
   avatar.position.set(0, mobile ? 0.34 : 0.3, 0);
   avatar.scale.setScalar(persona.scale * (mobile ? 0.82 : 1.02));
   modelLayer.position.set(0, mobile ? persona.modelYMobile : persona.modelYDesktop, 0);
@@ -3138,6 +3148,7 @@ function setDockOpen(open) {
 
 function updateDialogControls() {
   if (!dialogButton) return;
+  document.body.classList.toggle('dialog-active', state.dialogEnabled);
   const needsRealVoice = state.dialogEnabled && !browserVoiceFallbackEnabled && (!voiceApiEnabledInPage || !!state.voiceError);
   const label = !state.dialogEnabled
     ? '对话关'
@@ -3147,9 +3158,7 @@ function updateDialogControls() {
       ? '说话中'
       : state.awaitingPlayback
         ? '播放'
-      : needsRealVoice
-        ? '语音未接'
-        : '对话开';
+      : '对话开';
   dialogButton.classList.toggle('active', state.dialogEnabled);
   dialogButton.classList.toggle('warning', needsRealVoice);
   dialogButton.textContent = label;
@@ -3791,12 +3800,19 @@ if (menuButton) {
 if (dockEl) {
   dockEl.addEventListener('click', (event) => event.stopPropagation());
 }
-personaButtons.female.addEventListener('click', () => setPersona('female'));
-personaButtons.male.addEventListener('click', () => setPersona('male'));
+personaButtons.female.addEventListener('click', () => {
+  setPersona('female');
+  if (window.innerWidth <= 720) setDockOpen(false);
+});
+personaButtons.male.addEventListener('click', () => {
+  setPersona('male');
+  if (window.innerWidth <= 720) setDockOpen(false);
+});
 if (dialogButton) {
   dialogButton.addEventListener('click', () => {
     if (playQueuedAudio()) return;
     toggleDialog();
+    if (window.innerWidth <= 720) setDockOpen(false);
   });
 }
 if (voiceButton) {
@@ -3867,6 +3883,7 @@ if (!pendingInitialAction && initialAction) {
   setAction(initialAction);
 } else {
   setInteractionScene(state.activeScene, false);
+  if (!state.dialogEnabled) setAction('idle');
 }
 setDockOpen(controlsOpenInPage);
 checkVoiceStatus();

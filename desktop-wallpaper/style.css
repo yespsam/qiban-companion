@@ -130,18 +130,18 @@ h1 {
 
 .menu-toggle {
   position: relative;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   border: 1px solid rgba(246, 240, 231, 0.2);
   border-radius: 999px;
   padding: 0;
   display: grid;
   place-items: center;
-  background: rgba(8, 12, 10, 0.2);
+  background: rgba(8, 12, 10, 0.46);
   color: var(--ink);
   cursor: pointer;
   backdrop-filter: blur(10px);
-  opacity: 0.36;
+  opacity: 0.84;
   transition: opacity 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
@@ -193,7 +193,7 @@ h1 {
   padding: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(8, 12, 10, 0.5);
+  background: rgba(8, 12, 10, 0.76);
   backdrop-filter: blur(14px);
   overflow-x: auto;
   scrollbar-width: none;
@@ -308,9 +308,9 @@ body.mobile-mode .mobile-chat {
   top: max(12px, env(safe-area-inset-top));
   width: min(560px, calc(100vw - 20px));
   display: flex;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
-  padding: 3px;
+  padding: 2px;
   transform: translateX(-50%);
   pointer-events: auto;
   scrollbar-width: none;
@@ -322,18 +322,18 @@ body.mobile-mode .mobile-chat {
 }
 
 .scene-chip {
-  height: 34px;
+  height: 32px;
   min-width: 58px;
   border: 1px solid rgba(8, 12, 10, 0.08);
-  border-radius: 999px;
-  padding: 0 12px;
-  background: rgba(8, 12, 10, 0.34);
-  color: rgba(246, 240, 231, 0.78);
+  border-radius: 7px;
+  padding: 0 11px;
+  background: rgba(8, 12, 10, 0.5);
+  color: rgba(246, 240, 231, 0.84);
   font-size: 13px;
   font-weight: 650;
   white-space: nowrap;
   cursor: pointer;
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
   scroll-snap-align: center;
   transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
@@ -347,15 +347,15 @@ body.mobile-mode .mobile-chat {
   border-color: transparent;
   background: var(--accent);
   color: #06110a;
-  box-shadow: 0 8px 24px rgba(7, 193, 96, 0.22);
+  box-shadow: 0 8px 24px rgba(7, 193, 96, 0.18);
 }
 
 .mobile-chat {
   position: absolute;
   left: 50%;
-  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 72px);
+  bottom: calc(max(18px, env(safe-area-inset-bottom)) + 68px);
   width: min(430px, calc(100vw - 20px));
-  max-height: min(28svh, 220px);
+  max-height: min(23svh, 180px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -395,7 +395,7 @@ body.mobile-mode .mobile-chat {
   padding: 9px 11px;
   border: 1px solid rgba(246, 240, 231, 0.13);
   border-radius: 8px;
-  background: rgba(8, 12, 10, 0.52);
+  background: rgba(8, 12, 10, 0.66);
   color: var(--ink);
   font-size: 13px;
   line-height: 1.44;
@@ -416,15 +416,15 @@ body.mobile-mode .mobile-chat {
   left: 50%;
   bottom: max(12px, env(safe-area-inset-bottom));
   width: min(430px, calc(100vw - 20px));
-  min-height: 48px;
+  min-height: 52px;
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: center;
   gap: 6px;
   padding: 5px;
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel-strong);
+  border-radius: 8px;
+  background: rgba(8, 12, 10, 0.82);
   backdrop-filter: blur(18px);
   box-shadow: var(--shadow);
   transform: translateX(-50%);
@@ -486,7 +486,7 @@ body.mobile-mode .mobile-chat {
   width: 100%;
   height: 38px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 6px;
   padding: 0 12px;
   background: rgba(255, 255, 255, 0.05);
   color: var(--ink);
@@ -508,7 +508,7 @@ body.mobile-mode .mobile-chat {
   max-width: min(320px, calc(100vw - 36px));
   min-height: 25px;
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: 6px;
   background: rgba(8, 12, 10, 0.48);
   color: var(--muted);
   font-size: 12px;
@@ -811,8 +811,8 @@ body.mobile-mode .mobile-chat {
   }
 
   .mobile-chat {
-    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 152px);
-    max-height: min(24svh, 190px);
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 68px);
+    max-height: min(22svh, 176px);
   }
 
   .presence {
@@ -843,35 +843,47 @@ body.mobile-mode .mobile-chat {
     justify-content: center;
     gap: 4px;
     right: max(12px, env(safe-area-inset-right));
-    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 106px);
+    bottom: max(14px, env(safe-area-inset-bottom));
   }
 
   .dock.open {
     right: auto;
+    width: min(370px, calc(100vw - 18px));
+    align-items: flex-end;
   }
 
   .dock-btn {
     width: auto;
     min-width: 0;
-    height: 32px;
-    padding: 0 10px;
+    min-height: 38px;
+    padding: 0 8px;
+    border-radius: 6px;
+    color: rgba(255, 255, 255, 0.82);
     font-size: 12px;
   }
 
   .dock-group {
-    display: flex;
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px;
+    width: 100%;
   }
 
   .dock-panel {
-    max-width: calc(100vw - 68px);
-    gap: 4px;
-    padding: 6px;
+    width: calc(100% - 48px);
+    max-width: none;
+    gap: 5px;
+    padding: 7px;
+    border-color: rgba(255, 255, 255, 0.16);
+    border-radius: 8px;
+    background: rgba(8, 12, 10, 0.82);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
+    overflow: visible;
   }
 
   .menu-toggle {
-    width: 36px;
-    height: 36px;
+    width: 42px;
+    height: 42px;
   }
 
   .actions {
@@ -880,6 +892,36 @@ body.mobile-mode .mobile-chat {
 
   .server-state {
     display: none;
+  }
+
+  body.dialog-active .dock {
+    bottom: calc(max(12px, env(safe-area-inset-bottom)) + 60px);
+  }
+
+  body:not(.dialog-active) .scene-strip,
+  body:not(.dialog-active) .mobile-chat,
+  body:not(.dialog-active) .mobile-voice-bar,
+  body:not(.dialog-active) .mobile-voice-hint {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .scene-strip,
+  .mobile-chat,
+  .mobile-voice-bar,
+  .mobile-voice-hint {
+    transition: opacity 180ms ease, transform 180ms ease, visibility 180ms ease;
+  }
+
+  body:not(.dialog-active) .scene-strip {
+    transform: translateX(-50%) translateY(-8px);
+  }
+
+  body:not(.dialog-active) .mobile-chat,
+  body:not(.dialog-active) .mobile-voice-bar,
+  body:not(.dialog-active) .mobile-voice-hint {
+    transform: translateX(-50%) translateY(10px);
   }
 
   .voice-panel {
