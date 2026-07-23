@@ -11,7 +11,8 @@
     "test:chat": "node --test tests/netlify-chat.test.mjs"
   },
   "dependencies": {
-    "@andresaya/edge-tts": "^1.8.0"
+    "@andresaya/edge-tts": "^1.8.0",
+    "openai": "^6.48.0"
   },
   "devDependencies": {
     "@gltf-transform/cli": "^4.4.1",

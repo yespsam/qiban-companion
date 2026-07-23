@@ -1,4 +1,6 @@
-import { jsonResponse, personaKind } from './voice-data.mjs';
+import OpenAI from 'openai';
+
+import { personaKind } from './voice-data.mjs';
 import {
   companionProfiles,
   interactionScenes
@@ -36,17 +38,37 @@ function pickReply(list, text) {
   return list[Math.abs(seed + jitter) % list.length];
 }
 
-// BYOK Kimi takes priority. When no personal key is available, Netlify's
-// automatically injected OpenAI gateway credentials provide the default model.
-const LLM_API_KEY = process.env.LLM_API_KEY || process.env.MOONSHOT_API_KEY || '';
-const LLM_BASE_URL = (process.env.LLM_BASE_URL || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
-const LLM_DEFAULT_MODEL = process.env.LLM_MODEL || 'kimi-k2.5';
-const NETLIFY_GATEWAY_MODEL = process.env.NETLIFY_AI_MODEL || 'gpt-4.1-mini';
 const LLM_TIMEOUT_MS = 7000;
 const LLM_MODEL_WHITELIST = new Set([
   'kimi-k2.5', 'kimi-k2.6',
   'moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'
 ]);
+
+function runtimeEnv(name) {
+  try {
+    const value = globalThis.Netlify?.env?.get?.(name);
+    if (value) return String(value);
+  } catch (error) {
+    // The Netlify runtime global is unavailable in ordinary Node processes.
+  }
+  return String(process.env[name] || '');
+}
+
+function serverLlmKey() {
+  return runtimeEnv('LLM_API_KEY') || runtimeEnv('MOONSHOT_API_KEY');
+}
+
+function llmBaseUrl() {
+  return (runtimeEnv('LLM_BASE_URL') || 'https://api.moonshot.cn/v1').replace(/\/+$/, '');
+}
+
+function llmDefaultModel() {
+  return runtimeEnv('LLM_MODEL') || 'kimi-k2.5';
+}
+
+function gatewayModel() {
+  return runtimeEnv('NETLIFY_AI_MODEL') || 'gpt-4.1-mini';
+}
 
 function sanitizeLlmKey(value) {
   const key = String(value || '').trim();
@@ -56,17 +78,24 @@ function sanitizeLlmKey(value) {
 
 function sanitizeLlmModel(value) {
   const model = String(value || '').trim();
-  return LLM_MODEL_WHITELIST.has(model) ? model : LLM_DEFAULT_MODEL;
+  return LLM_MODEL_WHITELIST.has(model) ? model : llmDefaultModel();
 }
 
 function gatewayConfig() {
-  const apiKey = String(process.env.OPENAI_API_KEY || '').trim();
-  const baseUrl = String(process.env.OPENAI_BASE_URL || '').replace(/\/+$/, '');
+  const providerApiKey = runtimeEnv('OPENAI_API_KEY').trim();
+  const providerBaseUrl = runtimeEnv('OPENAI_BASE_URL').replace(/\/+$/, '');
+  const universalApiKey = runtimeEnv('NETLIFY_AI_GATEWAY_KEY').trim();
+  const universalBaseUrl = (
+    runtimeEnv('NETLIFY_AI_GATEWAY_BASE_URL')
+    || runtimeEnv('NETLIFY_AI_GATEWAY_URL')
+  ).replace(/\/+$/, '');
+  const providerReady = Boolean(providerApiKey && providerBaseUrl);
   return {
-    apiKey,
-    baseUrl,
-    model: NETLIFY_GATEWAY_MODEL,
-    available: Boolean(apiKey && baseUrl)
+    apiKey: providerReady ? providerApiKey : universalApiKey,
+    baseUrl: providerReady ? providerBaseUrl : universalBaseUrl,
+    model: gatewayModel(),
+    source: providerReady ? 'openai' : universalApiKey && universalBaseUrl ? 'universal' : 'none',
+    available: providerReady || Boolean(universalApiKey && universalBaseUrl)
   };
 }
 
@@ -131,11 +160,10 @@ function parseLLMReply(raw) {
   };
 }
 
-async function callLLM(text, kind, history, {
+async function callKimi(text, kind, history, {
   apiKey,
   baseUrl,
-  model,
-  provider
+  model
 }) {
   if (!apiKey || !baseUrl) return null;
   const controller = new AbortController();
@@ -160,7 +188,7 @@ async function callLLM(text, kind, history, {
     const data = await resp.json();
     const content = data.choices?.[0]?.message?.content || '';
     const parsed = parseLLMReply(content);
-    return parsed ? { ...parsed, provider, model: data.model || model } : null;
+    return parsed ? { ...parsed, provider: 'kimi', model: data.model || model } : null;
   } catch (error) {
     return null;
   } finally {
@@ -168,38 +196,83 @@ async function callLLM(text, kind, history, {
   }
 }
 
-export const handler = async (event) => {
+async function callGateway(text, kind, history, gateway) {
+  if (!gateway.available) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+  try {
+    const client = new OpenAI({
+      apiKey: gateway.apiKey,
+      baseURL: gateway.baseUrl,
+      maxRetries: 0,
+      timeout: LLM_TIMEOUT_MS
+    });
+    const data = await client.chat.completions.create({
+      model: gateway.model,
+      messages: buildLLMMessages(text, kind, history),
+      temperature: 0.78,
+      max_tokens: 320,
+      response_format: { type: 'json_object' }
+    }, {
+      signal: controller.signal
+    });
+    const content = data.choices?.[0]?.message?.content || '';
+    const parsed = parseLLMReply(content);
+    return parsed ? {
+      ...parsed,
+      provider: 'netlify_ai_gateway',
+      model: data.model || gateway.model
+    } : null;
+  } catch (error) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function json(body, status = 200) {
+  return Response.json(body, {
+    status,
+    headers: {
+      'Cache-Control': 'no-store'
+    }
+  });
+}
+
+export default async function handler(request) {
   const gateway = gatewayConfig();
-  if (event.httpMethod === 'GET') {
-    return jsonResponse({
-      enabled: gateway.available || Boolean(LLM_API_KEY),
-      default_provider: gateway.available ? 'netlify_ai_gateway' : LLM_API_KEY ? 'kimi' : 'fallback',
+  const serverKey = serverLlmKey();
+  if (request.method === 'GET') {
+    return json({
+      enabled: gateway.available || Boolean(serverKey),
+      default_provider: gateway.available ? 'netlify_ai_gateway' : serverKey ? 'kimi' : 'fallback',
       gateway: {
         available: gateway.available,
-        model: gateway.model
+        model: gateway.model,
+        source: gateway.source
       },
       kimi: {
-        server_key_available: Boolean(LLM_API_KEY),
+        server_key_available: Boolean(serverKey),
         byok_supported: true,
-        default_model: LLM_DEFAULT_MODEL
+        default_model: llmDefaultModel()
       }
     });
   }
 
-  if (event.httpMethod !== 'POST') {
-    return jsonResponse({ error: 'method not allowed' }, 405);
+  if (request.method !== 'POST') {
+    return json({ error: 'method not allowed' }, 405);
   }
 
   let payload;
   try {
-    payload = JSON.parse(event.body || '{}');
+    payload = await request.json();
   } catch (error) {
-    return jsonResponse({ error: 'invalid json' }, 400);
+    return json({ error: 'invalid json' }, 400);
   }
 
   const text = cleanText(payload.text);
   if (!text) {
-    return jsonResponse({ error: 'missing text' }, 400);
+    return json({ error: 'missing text' }, 400);
   }
 
   const kind = personaKind(payload.persona || payload.persona_short);
@@ -208,25 +281,19 @@ export const handler = async (event) => {
   const history = cleanHistory(payload.history);
 
   const personalKey = sanitizeLlmKey(payload.llm_key);
-  const kimiKey = personalKey || LLM_API_KEY;
+  const kimiKey = personalKey || serverKey;
   const kimiModel = sanitizeLlmModel(payload.llm_model);
   const llmBound = Boolean(personalKey);
-  let llm = await callLLM(text, kind, history, {
+  let llm = await callKimi(text, kind, history, {
     apiKey: kimiKey,
-    baseUrl: LLM_BASE_URL,
-    model: kimiModel,
-    provider: 'kimi'
+    baseUrl: llmBaseUrl(),
+    model: kimiModel
   });
   if (!llm && gateway.available) {
-    llm = await callLLM(text, kind, history, {
-      apiKey: gateway.apiKey,
-      baseUrl: gateway.baseUrl,
-      model: gateway.model,
-      provider: 'netlify_ai_gateway'
-    });
+    llm = await callGateway(text, kind, history, gateway);
   }
   if (llm) {
-    return jsonResponse({
+    return json({
       text: llm.reply,
       thinking: llm.thinking,
       emotion: {
@@ -260,7 +327,7 @@ export const handler = async (event) => {
     || thinkingLibrary[sceneId].female;
   const thinking = pickReply(thinkingPool, `${text}#think`);
 
-  return jsonResponse({
+  return json({
     text: reply,
     thinking,
     emotion: {
@@ -282,4 +349,14 @@ export const handler = async (event) => {
       context_turns: history.length
     }
   });
+}
+
+export const config = {
+  path: '/api/chat',
+  method: ['GET', 'POST'],
+  rateLimit: {
+    windowLimit: 20,
+    windowSize: 60,
+    aggregateBy: ['ip', 'domain']
+  }
 };

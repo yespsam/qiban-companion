@@ -1,7 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildLLMMessages, cleanHistory, handler } from '../netlify/functions/chat.mjs';
+import handler, { buildLLMMessages, cleanHistory } from '../netlify/functions/chat.mjs';
+
+function chatRequest(method, body) {
+  return new Request('http://localhost/api/chat', {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined
+  });
+}
 
 test('cleanHistory keeps only safe recent user and assistant turns', () => {
   const input = [
@@ -58,9 +66,7 @@ test('handler forwards sanitized history to the cloud model request', async (t) 
     };
   };
 
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({
+  const response = await handler(chatRequest('POST', {
       text: '那就去那家吧',
       persona_short: 'male',
       llm_key: 'sk-test-key',
@@ -68,9 +74,8 @@ test('handler forwards sanitized history to the cloud model request', async (t) 
         { role: 'user', content: '明天去火锅还是日料？' },
         { role: 'assistant', content: '我想去你昨天提到的日料店。' }
       ]
-    })
-  });
-  const body = JSON.parse(response.body);
+  }));
+  const body = await response.json();
 
   assert.equal(body.mode, 'cloud_llm');
   assert.equal(body.llm.context_turns, 2);
@@ -97,11 +102,9 @@ test('handler uses Netlify AI Gateway when no personal key is present', async (t
   process.env.OPENAI_API_KEY = 'netlify-gateway-test-key';
   process.env.OPENAI_BASE_URL = 'https://gateway.example.test/v1/';
   globalThis.fetch = async (url, options) => {
-    requestUrl = url;
-    authorization = options.headers.Authorization;
-    return {
-      ok: true,
-      json: async () => ({
+    requestUrl = String(url);
+    authorization = new Headers(options.headers).get('Authorization');
+    return new Response(JSON.stringify({
         model: 'gpt-4.1-mini',
         choices: [{
           message: {
@@ -113,22 +116,21 @@ test('handler uses Netlify AI Gateway when no personal key is present', async (t
             })
           }
         }]
-      })
-    };
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
   };
 
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({
+  const response = await handler(chatRequest('POST', {
       text: '那你觉得第二个方案怎么样？',
       persona_short: 'female',
       history: [
         { role: 'user', content: '周末去公园还是看电影？' },
         { role: 'assistant', content: '第二个方案听起来更适合下雨天。' }
       ]
-    })
-  });
-  const body = JSON.parse(response.body);
+  }));
+  const body = await response.json();
 
   assert.equal(requestUrl, 'https://gateway.example.test/v1/chat/completions');
   assert.equal(authorization, 'Bearer netlify-gateway-test-key');
@@ -141,21 +143,35 @@ test('handler uses Netlify AI Gateway when no personal key is present', async (t
 test('chat status reports default gateway availability without exposing credentials', async (t) => {
   const originalGatewayKey = process.env.OPENAI_API_KEY;
   const originalGatewayBase = process.env.OPENAI_BASE_URL;
+  const originalNetlify = globalThis.Netlify;
   t.after(() => {
     if (originalGatewayKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = originalGatewayKey;
     if (originalGatewayBase === undefined) delete process.env.OPENAI_BASE_URL;
     else process.env.OPENAI_BASE_URL = originalGatewayBase;
+    if (originalNetlify === undefined) delete globalThis.Netlify;
+    else globalThis.Netlify = originalNetlify;
   });
-  process.env.OPENAI_API_KEY = 'hidden-test-key';
-  process.env.OPENAI_BASE_URL = 'https://gateway.example.test/v1';
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.OPENAI_BASE_URL;
+  globalThis.Netlify = {
+    env: {
+      get(name) {
+        return {
+          NETLIFY_AI_GATEWAY_KEY: 'hidden-test-key',
+          NETLIFY_AI_GATEWAY_BASE_URL: 'https://gateway.example.test/v1'
+        }[name];
+      }
+    }
+  };
 
-  const response = await handler({ httpMethod: 'GET' });
-  const body = JSON.parse(response.body);
+  const response = await handler(chatRequest('GET'));
+  const body = await response.json();
 
   assert.equal(body.enabled, true);
   assert.equal(body.default_provider, 'netlify_ai_gateway');
   assert.equal(body.gateway.available, true);
+  assert.equal(body.gateway.source, 'universal');
   assert.equal(JSON.stringify(body).includes('hidden-test-key'), false);
 });
 
@@ -168,18 +184,15 @@ test('handler keeps conversation available when the LLM provider fails', async (
     throw new Error('provider unavailable');
   };
 
-  const response = await handler({
-    httpMethod: 'POST',
-    body: JSON.stringify({
+  const response = await handler(chatRequest('POST', {
       text: '今天有点累',
       persona_short: 'female',
       llm_key: 'sk-test-key',
       scene: 'daily'
-    })
-  });
-  const body = JSON.parse(response.body);
+  }));
+  const body = await response.json();
 
-  assert.equal(response.statusCode, 200);
+  assert.equal(response.status, 200);
   assert.equal(body.mode, 'cloud_scene_reply');
   assert.equal(body.llm.bound, true);
   assert.ok(body.text);
