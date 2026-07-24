@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.63-real3d-head';
+const modelAssetVersion = 'v0.2.64-real3d-head';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
   && params.get('quality') !== 'hd';
@@ -2423,6 +2423,10 @@ function loadModel(id) {
   const asset = modelAssets[id];
   if (!asset || !asset.model || modelState.loaded[id] || modelState.loading[id]) return;
   modelState.loading[id] = true;
+  if (state.activePersona === id) {
+    modelLayer.visible = false;
+    avatar.visible = false;
+  }
   document.body.style.setProperty('--model-progress', '0');
   gltfLoader.load(asset.model, (gltf) => {
     if (!asset.head) {
