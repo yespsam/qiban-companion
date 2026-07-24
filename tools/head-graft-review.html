@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Qiban head graft review</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #eef1f4;
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      #status {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 2;
+        padding: 6px 8px;
+        color: #25303a;
+        background: rgb(255 255 255 / 88%);
+        border: 1px solid rgb(37 48 58 / 14%);
+        border-radius: 4px;
+        font: 12px/1.4 system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="status">Loading graft...</div>
+    <script type="module">
+      import * as THREE from '../desktop-wallpaper/vendor/three.module.js';
+      import { GLTFLoader } from '../desktop-wallpaper/vendor/GLTFLoader.js';
+      import { DRACOLoader } from '../desktop-wallpaper/vendor/DRACOLoader.js';
+
+      const params = new URLSearchParams(location.search);
+      const bodyPath = params.get('body');
+      const headPath = params.get('head');
+      const focus = params.get('focus') || 'face';
+      const yaw = THREE.MathUtils.degToRad(Number(params.get('yaw') || 0));
+      const status = document.querySelector('#status');
+
+      const renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        preserveDrawingBuffer: true
+      });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.02;
+      document.body.append(renderer.domElement);
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xeef1f4);
+      const camera = new THREE.PerspectiveCamera(27, innerWidth / innerHeight, 0.001, 100);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xa8b1ba, 2.1));
+      const key = new THREE.DirectionalLight(0xfff4eb, 3);
+      key.position.set(3, 4, 5);
+      scene.add(key);
+      const fill = new THREE.DirectionalLight(0xd8e8ff, 1.8);
+      fill.position.set(-4, 2, 3);
+      scene.add(fill);
+
+      const loader = new GLTFLoader();
+      const draco = new DRACOLoader();
+      draco.setDecoderPath('../desktop-wallpaper/vendor/');
+      loader.setDRACOLoader(draco);
+      const textureLoader = new THREE.TextureLoader();
+
+      const loadModel = (path) => new Promise((resolve, reject) => {
+        loader.load(`../${path}`, resolve, undefined, reject);
+      });
+
+      const tuneMaterials = (root) => {
+        root.traverse((object) => {
+          if (!object.isMesh && !object.isSkinnedMesh) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.filter(Boolean).forEach((material) => {
+            if ('emissiveMap' in material) material.emissiveMap = null;
+            if ('emissiveIntensity' in material) material.emissiveIntensity = 0;
+            if (material.emissive) material.emissive.setHex(0x000000);
+            if ('roughness' in material) material.roughness = 0.72;
+            if ('metalness' in material) material.metalness = 0.02;
+            material.side = THREE.DoubleSide;
+            material.needsUpdate = true;
+          });
+        });
+      };
+
+      const hideOriginalHead = (root) => {
+        root.traverse((object) => {
+          if (!object.isSkinnedMesh) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.filter(Boolean).forEach((material) => {
+            material.onBeforeCompile = (shader) => {
+              shader.vertexShader = `varying float vQibanBodyY;\n${shader.vertexShader}`
+                .replace(
+                  '#include <begin_vertex>',
+                  '#include <begin_vertex>\nvQibanBodyY = position.y;'
+                );
+              shader.fragmentShader = `varying float vQibanBodyY;\n${shader.fragmentShader}`
+                .replace(
+                  '#include <clipping_planes_fragment>',
+                  '#include <clipping_planes_fragment>\nif (vQibanBodyY > 1.39) discard;'
+                );
+            };
+            material.customProgramCacheKey = () => 'qiban-hide-old-head-v1';
+            material.needsUpdate = true;
+          });
+        });
+      };
+
+      if (!bodyPath || !headPath) {
+        status.textContent = 'Missing body or head query';
+        throw new Error('Both body and head query parameters are required.');
+      }
+
+      Promise.all([
+        loadModel(bodyPath),
+        loadModel(headPath),
+        textureLoader.loadAsync('../desktop-wallpaper/assets/faces/xiao-qi-curved-face-v1.webp')
+      ]).then(([bodyGltf, headGltf, faceTexture]) => {
+        const body = bodyGltf.scene;
+        const head = headGltf.scene;
+        tuneMaterials(body);
+        tuneMaterials(head);
+        head.traverse((object) => {
+          if (!object.isMesh) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.filter(Boolean).forEach((material) => {
+            if ('normalMap' in material) material.normalMap = null;
+            material.needsUpdate = true;
+          });
+        });
+        hideOriginalHead(body);
+
+        let headBone = null;
+        body.traverse((object) => {
+          if (object.isBone && object.name === 'Head') headBone = object;
+        });
+        if (!headBone) throw new Error('Body model has no Head bone.');
+
+        const scale = Number(params.get('scale') || 0.2);
+        const hairMaterial = new THREE.MeshStandardMaterial({
+          color: 0x302738,
+          roughness: 0.7,
+          metalness: 0.02,
+          side: THREE.DoubleSide
+        });
+        const hairCore = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5, 64, 48),
+          hairMaterial
+        );
+        hairCore.name = 'qiban-hair-core';
+        hairCore.position.set(0, 1.08, -0.32);
+        hairCore.scale.set(0.9, 1.14, 0.52);
+        head.add(hairCore);
+
+        faceTexture.colorSpace = THREE.SRGBColorSpace;
+        faceTexture.anisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 16);
+        const faceGeometry = new THREE.PlaneGeometry(0.88, 1, 64, 72);
+        const facePositions = faceGeometry.getAttribute('position');
+        for (let index = 0; index < facePositions.count; index += 1) {
+          const x = facePositions.getX(index);
+          const y = facePositions.getY(index);
+          const nx = x / 0.44;
+          const ny = y / 0.5;
+          const radius = Math.min(1, nx * nx + ny * ny);
+          const chin = ny < 0 ? Math.max(0, 1 + ny * 0.12) : 1;
+          facePositions.setX(index, x * chin);
+          facePositions.setY(index, y + 1.03);
+          facePositions.setZ(index, 0.415 + (1 - radius) * 0.105);
+        }
+        faceGeometry.computeVertexNormals();
+        const faceSurface = new THREE.Mesh(
+          faceGeometry,
+          new THREE.MeshBasicMaterial({
+            map: faceTexture,
+            transparent: true,
+            alphaTest: 0.025,
+            side: THREE.DoubleSide,
+            toneMapped: false
+          })
+        );
+        faceSurface.name = 'qiban-curved-face-surface';
+        faceSurface.renderOrder = 3;
+        head.add(faceSurface);
+        head.position.set(
+          Number(params.get('x') || 0),
+          Number(params.get('y') || 0),
+          Number(params.get('z') || 0)
+        );
+        head.quaternion.set(
+          Number(params.get('qx') || -0.3312224),
+          Number(params.get('qy') || 0.0072473),
+          Number(params.get('qz') || -0.0072473),
+          Number(params.get('qw') || 0.9434971)
+        );
+        head.scale.setScalar(scale);
+        headBone.add(head);
+
+        const character = new THREE.Group();
+        character.rotation.y = yaw;
+        character.add(body);
+        scene.add(character);
+        character.updateMatrixWorld(true);
+
+        const bounds = new THREE.Box3().setFromObject(body);
+        const headBounds = new THREE.Box3().setFromObject(head);
+        const size = bounds.getSize(new THREE.Vector3());
+        const headSize = headBounds.getSize(new THREE.Vector3());
+        const center = bounds.getCenter(new THREE.Vector3());
+        const portrait = focus === 'face';
+        const target = portrait
+          ? new THREE.Vector3(center.x, bounds.min.y + size.y * 0.87, center.z)
+          : center;
+        const subjectHeight = portrait ? size.y * 0.35 : size.y * 1.08;
+        const distance = subjectHeight / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+        camera.position.set(target.x, target.y, target.z + distance);
+        camera.lookAt(target);
+        camera.near = Math.max(0.0001, distance / 100);
+        camera.far = distance * 20;
+        camera.updateProjectionMatrix();
+
+        status.textContent = `scale ${scale} / head ${headSize.y.toFixed(5)} / body ${size.y.toFixed(5)}`;
+        document.documentElement.dataset.headSize = headSize.toArray().join(',');
+        document.documentElement.dataset.bodySize = size.toArray().join(',');
+        renderer.render(scene, camera);
+        document.documentElement.dataset.ready = 'true';
+      }).catch((error) => {
+        status.textContent = 'Graft load failed';
+        console.error(error);
+      });
+
+      addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.render(scene, camera);
+      });
+    </script>
+  </body>
+</html>

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:model:female-head": "node tools/build-curved-face-texture.mjs && node tools/build-browser-head.mjs",
     "build:model:female": "node tools/build-browser-model.mjs female",
     "build:model:male": "node tools/build-browser-model.mjs male",
     "build:model:characters": "npm run build:model:female && npm run build:model:male",

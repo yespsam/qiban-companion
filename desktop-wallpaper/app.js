@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.61-face-preloaded';
+const modelAssetVersion = 'v0.2.63-real3d-head';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
   && params.get('quality') !== 'hd';
@@ -144,6 +144,7 @@ const modelAssets = {
   female: {
     selection: 'F4',
     model: characterModelUrl('xiao-qi-v2'),
+    head: characterModelUrl('xiao-qi-head-v1'),
     animations: {},
     nativeAnimations: true,
     modeledHands: true
@@ -184,20 +185,10 @@ const nativeModelClipRanges = {};
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 const textureLoader = new THREE.TextureLoader();
-const femaleFaceTextureWaiters = [];
-const femaleFaceTexture = textureLoader.load(
-  modelUrl('./assets/faces/xiao-qi-face-v3.png'),
-  (texture) => {
-    texture.userData.qibanReady = true;
-    femaleFaceTextureWaiters.splice(0).forEach((waiter) => waiter.onReady());
-  },
-  undefined,
-  () => {
-    femaleFaceTexture.userData.qibanError = true;
-    femaleFaceTextureWaiters.splice(0).forEach((waiter) => waiter.onError());
-  }
+const femaleCurvedFaceTexture = textureLoader.load(
+  modelUrl('./assets/faces/xiao-qi-curved-face-v1.webp')
 );
-femaleFaceTexture.colorSpace = THREE.SRGBColorSpace;
+femaleCurvedFaceTexture.colorSpace = THREE.SRGBColorSpace;
 dracoLoader.setDecoderPath('./vendor/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
@@ -1240,348 +1231,151 @@ function updateModelHandOverlays(t) {
   syncOneModelHandOverlay(entry, 'Right', t);
 }
 
-function makeAnimeFaceShellGeometry(radiusX, radiusY, depth, rings = 10, segments = 56) {
-  const positions = [0, 0, depth];
-  const uvs = [0.5, 0.5];
-  const indices = [];
+function hideOriginalFemaleHead(root) {
+  root.traverse((object) => {
+    if (!object.isSkinnedMesh) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.filter(Boolean).forEach((material) => {
+      material.onBeforeCompile = (shader) => {
+        shader.vertexShader = `varying float vQibanBodyY;\n${shader.vertexShader}`
+          .replace(
+            '#include <begin_vertex>',
+            '#include <begin_vertex>\nvQibanBodyY = position.y;'
+          );
+        shader.fragmentShader = `varying float vQibanBodyY;\n${shader.fragmentShader}`
+          .replace(
+            '#include <clipping_planes_fragment>',
+            '#include <clipping_planes_fragment>\nif (vQibanBodyY > 1.39) discard;'
+          );
+      };
+      material.customProgramCacheKey = () => 'qiban-hide-original-head-v1';
+      material.needsUpdate = true;
+    });
+  });
+}
 
-  for (let ring = 1; ring <= rings; ring += 1) {
-    const radius = ring / rings;
-    for (let segment = 0; segment < segments; segment += 1) {
-      const angle = (segment / segments) * Math.PI * 2;
-      const normalizedY = Math.sin(angle) * radius;
-      const chinTaper = normalizedY < 0 ? 0.88 + (normalizedY + 1) * 0.12 : 1;
-      const x = Math.cos(angle) * radiusX * radius * chinTaper;
-      const lowerFaceLength = normalizedY < 0 ? 1.55 : 1;
-      const y = normalizedY * radiusY * lowerFaceLength;
-      const z = depth * (1 - radius * radius);
-      positions.push(x, y, z);
-      uvs.push(x / (radiusX * 2) + 0.5, y / (radiusY * 3.1) + 0.5);
-    }
+function makeCurvedFaceGeometry() {
+  const geometry = new THREE.PlaneGeometry(0.88, 1, 64, 72);
+  const positions = geometry.getAttribute('position');
+  for (let index = 0; index < positions.count; index += 1) {
+    const x = positions.getX(index);
+    const y = positions.getY(index);
+    const nx = x / 0.44;
+    const ny = y / 0.5;
+    const radius = Math.min(1, nx * nx + ny * ny);
+    const chin = ny < 0 ? Math.max(0, 1 + ny * 0.12) : 1;
+    positions.setX(index, x * chin);
+    positions.setY(index, y + 1.03);
+    positions.setZ(index, 0.415 + (1 - radius) * 0.105);
   }
-
-  for (let segment = 0; segment < segments; segment += 1) {
-    indices.push(0, 1 + segment, 1 + ((segment + 1) % segments));
-  }
-
-  for (let ring = 1; ring < rings; ring += 1) {
-    const innerStart = 1 + (ring - 1) * segments;
-    const outerStart = 1 + ring * segments;
-    for (let segment = 0; segment < segments; segment += 1) {
-      const next = (segment + 1) % segments;
-      const inner = innerStart + segment;
-      const innerNext = innerStart + next;
-      const outer = outerStart + segment;
-      const outerNext = outerStart + next;
-      indices.push(inner, outer, outerNext, inner, outerNext, innerNext);
-    }
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
 }
 
-function markAnimeFaceFeature(mesh) {
+function markReplacementFaceFeature(mesh) {
   mesh.userData.qibanFaceFeature = true;
   mesh.frustumCulled = false;
   return mesh;
 }
 
-function animeFaceSurfaceZ(x, y) {
-  const normalized = Math.min(1, (x / 5.85) ** 2 + (y / 6.85) ** 2);
-  return 0.48 * (1 - normalized) + 0.08;
-}
+function buildFemaleHeadReplacement(entry, headGltf) {
+  if (!entry?.bones?.Head || !headGltf?.scene) return null;
+  hideOriginalFemaleHead(entry.root);
 
-function addAnimeFaceDisc(parent, material, x, y, scaleX, scaleY, zOffset = 0) {
-  const mesh = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 40),
-    material
-  ));
-  mesh.position.set(x, y, animeFaceSurfaceZ(x, y) + zOffset);
-  mesh.scale.set(scaleX, scaleY, 1);
-  parent.add(mesh);
-  return mesh;
-}
+  const head = headGltf.scene;
+  head.name = 'qiban-real3d-head-v1';
+  head.traverse((object) => {
+    if (!object.isMesh) return;
+    object.frustumCulled = false;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    materials.filter(Boolean).forEach((material) => {
+      enhanceLoadedMaterial(material);
+      if ('normalMap' in material) material.normalMap = null;
+      material.side = THREE.DoubleSide;
+      material.needsUpdate = true;
+    });
+  });
 
-function buildAnimeEye(face, side, materials) {
-  const sign = side === 'left' ? -1 : 1;
-  const group = new THREE.Group();
-  const x = sign * 2.25;
-  const y = 1.12;
-  group.position.set(x, y, animeFaceSurfaceZ(x, y) + 0.12);
-  face.add(group);
-
-  const white = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 40),
-    materials.white
-  ));
-  white.scale.set(1.58, 0.76, 1);
-  group.add(white);
-
-  const iris = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 40),
-    materials.iris
-  ));
-  iris.position.z = 0.1;
-  iris.scale.set(0.58, 0.7, 1);
-  group.add(iris);
-
-  const pupil = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 32),
-    materials.pupil
-  ));
-  pupil.position.z = 0.18;
-  pupil.scale.set(0.32, 0.48, 1);
-  group.add(pupil);
-
-  const highlight = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 24),
-    materials.highlight
-  ));
-  highlight.position.set(sign * -0.18, 0.29, 0.24);
-  highlight.scale.set(0.2, 0.25, 1);
-  group.add(highlight);
-
-  const lash = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.TorusGeometry(1.64, 0.15, 6, 32, Math.PI),
-    materials.lash
-  ));
-  lash.position.set(0, 0.1, 0.3);
-  lash.scale.set(0.96, 0.46, 0.45);
-  group.add(lash);
-
-  const outerLash = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.09, 0.72, 4, 12),
-    materials.lash
-  ));
-  outerLash.position.set(sign * 1.52, 0.08, 0.29);
-  outerLash.rotation.set(Math.PI / 2, 0, sign * -0.82);
-  group.add(outerLash);
-
-  group.userData.iris = iris;
-  group.userData.pupil = pupil;
-  group.userData.highlight = highlight;
-  return group;
-}
-
-function makeAnimeBangGeometry(width, length, curve = 0) {
-  const shape = new THREE.Shape();
-  shape.moveTo(-width * 0.52, 0);
-  shape.quadraticCurveTo(0, width * 0.26, width * 0.52, 0);
-  shape.quadraticCurveTo(width * 0.34 + curve, -length * 0.58, curve, -length);
-  shape.quadraticCurveTo(-width * 0.34 + curve, -length * 0.58, -width * 0.52, 0);
-  return new THREE.ShapeGeometry(shape, 18);
-}
-
-function buildAnimeFaceOverlay(entry, id) {
-  if (id !== 'female' || !entry.bones.Head) return null;
-
-  const face = new THREE.Group();
-  face.name = 'qiban-anime-face-v2';
-  face.position.set(0.3754, 16.4936, 7.9505);
-  face.quaternion.set(-0.3312224, 0.0072473, -0.0072473, 0.9434971);
-
-  const materials = {
-    skin: new THREE.MeshStandardMaterial({
-      color: 0xffd7c9,
-      roughness: 0.82,
-      metalness: 0,
+  const hairCore = markReplacementFaceFeature(new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 64, 48),
+    new THREE.MeshStandardMaterial({
+      color: 0x302738,
+      roughness: 0.7,
+      metalness: 0.02,
       side: THREE.DoubleSide
-    }),
-    white: new THREE.MeshBasicMaterial({ color: 0xfffdf9 }),
-    iris: new THREE.MeshBasicMaterial({ color: 0x76505d }),
-    pupil: new THREE.MeshBasicMaterial({ color: 0x17101d }),
-    highlight: new THREE.MeshBasicMaterial({ color: 0xffffff }),
-    lash: new THREE.MeshBasicMaterial({ color: 0x2a1828 }),
-    brow: new THREE.MeshBasicMaterial({ color: 0x5a344d }),
-    hair: new THREE.MeshBasicMaterial({ color: 0x2b2330, side: THREE.DoubleSide }),
-    cheek: new THREE.MeshBasicMaterial({
-      color: 0xf58e9f,
-      transparent: true,
-      opacity: 0.2,
-      depthWrite: false
-    }),
-    nose: new THREE.MeshBasicMaterial({ color: 0xda897f }),
-    mouth: new THREE.MeshBasicMaterial({ color: 0x7a3343 }),
-    mouthInner: new THREE.MeshBasicMaterial({ color: 0x441b2b }),
-    tongue: new THREE.MeshBasicMaterial({ color: 0xe9838e })
-  };
-
-  const shell = markAnimeFaceFeature(new THREE.Mesh(
-    makeAnimeFaceShellGeometry(5.85, 6.85, 0.48),
-    materials.skin
+    })
   ));
-  shell.renderOrder = 2;
-  face.add(shell);
+  hairCore.name = 'qiban-hair-core';
+  hairCore.position.set(0, 1.08, -0.32);
+  hairCore.scale.set(0.9, 1.14, 0.52);
+  head.add(hairCore);
 
-  const detailLayer = new THREE.Group();
-  detailLayer.name = 'qiban-procedural-face-fallback';
-  detailLayer.visible = false;
-  face.add(detailLayer);
-
-  const faceTexture = femaleFaceTexture;
-  tuneTexture(faceTexture, THREE.SRGBColorSpace);
-  const photoOverlay = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.PlaneGeometry(21.2, 21.8, 10, 12),
+  tuneTexture(femaleCurvedFaceTexture, THREE.SRGBColorSpace);
+  const faceSurface = markReplacementFaceFeature(new THREE.Mesh(
+    makeCurvedFaceGeometry(),
     new THREE.MeshBasicMaterial({
-      map: faceTexture,
+      map: femaleCurvedFaceTexture,
       transparent: true,
       alphaTest: 0.025,
-      depthWrite: false,
+      side: THREE.DoubleSide,
       toneMapped: false
     })
   ));
-  photoOverlay.name = 'qiban-approved-face-texture';
-  photoOverlay.position.set(0, 0.05, 1.08);
-  photoOverlay.renderOrder = 4;
-  photoOverlay.visible = false;
-  face.add(photoOverlay);
-
-  const showPhotoFace = () => {
-    photoOverlay.visible = true;
-    shell.visible = false;
-    detailLayer.visible = false;
-  };
-  const showFallbackFace = () => {
-    photoOverlay.visible = false;
-    shell.visible = true;
-    detailLayer.visible = true;
-  };
-  if (faceTexture.userData.qibanReady) {
-    showPhotoFace();
-  } else if (faceTexture.userData.qibanError) {
-    showFallbackFace();
-  } else {
-    femaleFaceTextureWaiters.push({
-      onReady: showPhotoFace,
-      onError: showFallbackFace
-    });
-  }
-
-  const leftEye = buildAnimeEye(detailLayer, 'left', materials);
-  const rightEye = buildAnimeEye(detailLayer, 'right', materials);
-
-  [-1, 1].forEach((sign) => {
-    const brow = markAnimeFaceFeature(new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.1, 1.52, 4, 14),
-      materials.brow
-    ));
-    const x = sign * 2.3;
-    const y = 3.12;
-    brow.position.set(x, y, animeFaceSurfaceZ(x, y) + 0.16);
-    brow.rotation.set(Math.PI / 2, 0, sign * -0.08 + Math.PI / 2);
-    detailLayer.add(brow);
-  });
-
-  const nose = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.SphereGeometry(0.27, 18, 12),
-    materials.nose
-  ));
-  nose.position.set(0.14, -0.52, animeFaceSurfaceZ(0.14, -0.52) + 0.18);
-  nose.scale.set(0.44, 0.7, 0.3);
-  detailLayer.add(nose);
-
-  addAnimeFaceDisc(detailLayer, materials.cheek, -3.25, -0.95, 1.08, 0.5, 0.12);
-  addAnimeFaceDisc(detailLayer, materials.cheek, 3.25, -0.95, 1.08, 0.5, 0.12);
+  faceSurface.name = 'qiban-curved-face-surface';
+  faceSurface.renderOrder = 3;
+  head.add(faceSurface);
 
   const mouthGroup = new THREE.Group();
-  mouthGroup.position.set(0, -2.95, 1.34);
+  mouthGroup.name = 'qiban-speaking-mouth';
+  mouthGroup.position.set(0, 0.815, 0.527);
   mouthGroup.visible = false;
-  face.add(mouthGroup);
+  head.add(mouthGroup);
 
-  const mouthOpening = markAnimeFaceFeature(new THREE.Mesh(
+  const mouthOpening = markReplacementFaceFeature(new THREE.Mesh(
     new THREE.CircleGeometry(1, 36),
-    materials.mouthInner
+    new THREE.MeshBasicMaterial({ color: 0x4c1f2b })
   ));
-  mouthOpening.scale.set(1.42, 0.22, 1);
+  mouthOpening.scale.set(0.065, 0.012, 1);
   mouthGroup.add(mouthOpening);
 
-  const tongue = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 32),
-    materials.tongue
+  const tongue = markReplacementFaceFeature(new THREE.Mesh(
+    new THREE.CircleGeometry(1, 28),
+    new THREE.MeshBasicMaterial({ color: 0xe17e8b })
   ));
-  tongue.position.set(0, -0.16, 0.08);
-  tongue.scale.set(0.86, 0.25, 1);
+  tongue.position.set(0, -0.008, 0.001);
+  tongue.scale.set(0.038, 0.008, 1);
   mouthGroup.add(tongue);
 
-  const smile = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.TorusGeometry(1.08, 0.1, 6, 30, Math.PI),
-    materials.mouth
-  ));
-  smile.position.set(0, 0.24, 0.14);
-  smile.rotation.z = Math.PI;
-  smile.scale.set(1.18, 0.55, 0.5);
-  mouthGroup.add(smile);
+  head.position.set(0, -19, 0);
+  head.quaternion.set(-0.3312224, 0.0072473, -0.0072473, 0.9434971);
+  head.scale.setScalar(20);
+  entry.bones.Head.add(head);
 
-  const lowerLip = markAnimeFaceFeature(new THREE.Mesh(
-    new THREE.TorusGeometry(0.72, 0.055, 5, 24, Math.PI),
-    materials.tongue
-  ));
-  lowerLip.position.set(0, -0.25, 0.13);
-  lowerLip.scale.set(1, 0.34, 0.4);
-  mouthGroup.add(lowerLip);
-
-  [
-    { x: -4.65, width: 2.45, length: 3.25, curve: -0.28, rotation: 0.12 },
-    { x: -2.35, width: 2.65, length: 4.15, curve: -0.18, rotation: 0.06 },
-    { x: 0, width: 2.8, length: 4.45, curve: -0.2, rotation: 0.02 },
-    { x: 2.35, width: 2.65, length: 3.95, curve: 0.18, rotation: -0.06 },
-    { x: 4.65, width: 2.45, length: 3.1, curve: 0.28, rotation: -0.12 }
-  ].forEach((spec) => {
-    const bang = markAnimeFaceFeature(new THREE.Mesh(
-      makeAnimeBangGeometry(spec.width, spec.length, spec.curve),
-      materials.hair
-    ));
-    bang.position.set(spec.x, 7.05, 1.18);
-    bang.rotation.z = spec.rotation;
-    detailLayer.add(bang);
-  });
-
-  face.userData.eyes = [leftEye, rightEye];
-  face.userData.detailLayer = detailLayer;
-  face.userData.photoOverlay = photoOverlay;
-  face.userData.mouthGroup = mouthGroup;
-  face.userData.mouthOpening = mouthOpening;
-  face.userData.tongue = tongue;
-  face.userData.smile = smile;
-  face.userData.materials = materials;
-  entry.bones.Head.add(face);
-  return face;
+  return {
+    root: head,
+    faceSurface,
+    mouthGroup,
+    mouthOpening,
+    tongue
+  };
 }
 
-function updateAnimeFace(entry, t) {
-  const face = entry?.animeFace;
+function updateReplacementFace(entry, t) {
+  const face = entry?.faceRig;
   if (!face) return;
-
-  const blinkPhase = t % 4.6;
-  const blink = blinkPhase > 4.42
-    ? Math.max(0.07, Math.abs(blinkPhase - 4.51) / 0.09)
-    : 1;
-  face.userData.eyes.forEach((eye, index) => {
-    eye.scale.y = blink;
-    const gazeX = state.pointerX * 0.24;
-    const gazeY = -state.pointerY * 0.16;
-    eye.userData.iris.position.set(gazeX, gazeY, 0.1);
-    eye.userData.pupil.position.set(gazeX, gazeY, 0.18);
-    eye.userData.highlight.position.set((index === 0 ? 0.18 : -0.18) + gazeX, 0.29 + gazeY, 0.24);
-  });
-
-  const syllable = state.speaking
-    ? 0.38 + Math.abs(Math.sin(t * 12.2)) * 0.92
-    : state.action === 'voice'
-      ? 0.24 + Math.abs(Math.sin(t * 4.2)) * 0.12
-      : 0.18;
-  face.userData.mouthGroup.visible = state.speaking
+  const active = state.speaking
     || state.voiceLoading
-    || state.awaitingPlayback;
-  face.userData.mouthOpening.scale.set(1.42 - syllable * 0.2, syllable, 1);
-  face.userData.tongue.scale.set(0.86, Math.max(0.15, syllable * 0.32), 1);
-  face.userData.tongue.position.y = -syllable * 0.34;
-  face.userData.smile.scale.y = state.speaking ? 0.34 : 0.55;
+    || state.awaitingPlayback
+    || state.action === 'voice';
+  const syllable = state.speaking
+    ? 0.45 + Math.abs(Math.sin(t * 12.2)) * 0.75
+    : state.action === 'voice'
+      ? 0.22 + Math.abs(Math.sin(t * 4.2)) * 0.18
+      : 0.22;
+  face.mouthGroup.visible = active;
+  face.mouthOpening.scale.set(0.065 - syllable * 0.009, 0.012 + syllable * 0.03, 1);
+  face.tongue.scale.set(0.038, 0.006 + syllable * 0.009, 1);
+  face.tongue.position.y = -0.006 - syllable * 0.012;
 }
 
 function easeOutCubic(x) {
@@ -2555,78 +2349,102 @@ function activateLoadedModel(id) {
   }
 }
 
+function failModelLoad(id, title = '3D 模型加载失败，已临时回退到内置人物。') {
+  modelState.loading[id] = false;
+  if (state.activePersona === id && !modelState.active) {
+    modelLayer.visible = false;
+    avatar.visible = true;
+    document.body.classList.add('model-ready');
+    serverStateEl.textContent = '模型未接';
+    serverStateEl.title = title;
+  }
+}
+
+function completeModelLoad(id, asset, gltf, headGltf = null) {
+  const root = gltf.scene;
+  normalizeLoadedModel(root);
+  const entry = {
+    selection: asset.selection,
+    root,
+    bones: collectModelBones(root),
+    clips: gltf.animations || [],
+    animationClips: {},
+    animationRequests: {},
+    actions: {},
+    mixer: new THREE.AnimationMixer(root),
+    activeAnimation: '',
+    activeAction: null,
+    hasFingerBones: false,
+    faceRig: null
+  };
+  entry.hasFingerBones = modelHasFingerBones(entry) || !!asset.modeledHands;
+  if (id === 'female' && headGltf) {
+    entry.faceRig = buildFemaleHeadReplacement(entry, headGltf);
+  }
+  // Native clips remain available for future vetted assets.
+  (asset.nativeAnimations === false ? [] : gltf.animations || []).forEach((clip) => {
+    const name = clip.name;
+    if (!runtimeModelActions.has(name)) return;
+    if (!Number.isFinite(clip.duration) || clip.duration <= 0) return;
+    const clipRange = nativeModelClipRanges[name];
+    const runtimeClip = clipRange && clip.duration > 1
+      ? THREE.AnimationUtils.subclip(
+        clip,
+        name,
+        clipRange.start,
+        Math.min(clipRange.end || Math.floor(clip.duration * 30), Math.floor(clip.duration * 30)),
+        30
+      )
+      : clip;
+    entry.animationClips[name] = runtimeClip;
+    const action = entry.mixer.clipAction(runtimeClip, entry.root);
+    const shouldLoop = loopingModelActions.has(name);
+    action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
+    action.clampWhenFinished = !shouldLoop;
+    entry.actions[name] = action;
+  });
+  modelState.loaded[id] = entry;
+  modelState.loading[id] = false;
+  if (state.activePersona === id) {
+    activateLoadedModel(id);
+    resize();
+  }
+  document.body.style.setProperty('--model-progress', '1');
+  const otherId = id === 'female' ? 'male' : 'female';
+  const preloadOther = () => loadModel(otherId);
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(preloadOther, { timeout: 4500 });
+  } else {
+    window.setTimeout(preloadOther, 2200);
+  }
+}
+
 function loadModel(id) {
   const asset = modelAssets[id];
   if (!asset || !asset.model || modelState.loaded[id] || modelState.loading[id]) return;
   modelState.loading[id] = true;
   document.body.style.setProperty('--model-progress', '0');
   gltfLoader.load(asset.model, (gltf) => {
-    const root = gltf.scene;
-    normalizeLoadedModel(root);
-    const entry = {
-      selection: asset.selection,
-      root,
-      bones: collectModelBones(root),
-      clips: gltf.animations || [],
-      animationClips: {},
-      animationRequests: {},
-      actions: {},
-      mixer: new THREE.AnimationMixer(root),
-      activeAnimation: '',
-      activeAction: null,
-      hasFingerBones: false
-    };
-    entry.hasFingerBones = modelHasFingerBones(entry) || !!asset.modeledHands;
-    entry.animeFace = buildAnimeFaceOverlay(entry, id);
-    // Native clips remain available for future vetted assets.
-    (asset.nativeAnimations === false ? [] : gltf.animations || []).forEach((clip) => {
-      const name = clip.name;
-      if (!runtimeModelActions.has(name)) return;
-      if (!Number.isFinite(clip.duration) || clip.duration <= 0) return;
-      const clipRange = nativeModelClipRanges[name];
-      const runtimeClip = clipRange && clip.duration > 1
-        ? THREE.AnimationUtils.subclip(
-          clip,
-          name,
-          clipRange.start,
-          Math.min(clipRange.end || Math.floor(clip.duration * 30), Math.floor(clip.duration * 30)),
-          30
-        )
-        : clip;
-      entry.animationClips[name] = runtimeClip;
-      const action = entry.mixer.clipAction(runtimeClip, entry.root);
-      const shouldLoop = loopingModelActions.has(name);
-      action.setLoop(shouldLoop ? THREE.LoopRepeat : THREE.LoopOnce, shouldLoop ? Infinity : 1);
-      action.clampWhenFinished = !shouldLoop;
-      entry.actions[name] = action;
+    if (!asset.head) {
+      completeModelLoad(id, asset, gltf);
+      return;
+    }
+    gltfLoader.load(asset.head, (headGltf) => {
+      completeModelLoad(id, asset, gltf, headGltf);
+    }, (event) => {
+      if (!event.total || state.activePersona !== id) return;
+      const progress = 0.58 + Math.max(0, Math.min(1, event.loaded / event.total)) * 0.42;
+      document.body.style.setProperty('--model-progress', progress.toFixed(3));
+    }, () => {
+      failModelLoad(id, '真实 3D 头模加载失败，已临时回退到内置人物。');
     });
-    modelState.loaded[id] = entry;
-    modelState.loading[id] = false;
-    if (state.activePersona === id) {
-      activateLoadedModel(id);
-      resize();
-    }
-    document.body.style.setProperty('--model-progress', '1');
-    const otherId = id === 'female' ? 'male' : 'female';
-    const preloadOther = () => loadModel(otherId);
-    if ('requestIdleCallback' in window) {
-      window.requestIdleCallback(preloadOther, { timeout: 4500 });
-    } else {
-      window.setTimeout(preloadOther, 2200);
-    }
   }, (event) => {
     if (!event.total || state.activePersona !== id) return;
-    const progress = Math.max(0, Math.min(1, event.loaded / event.total));
+    const progress = Math.max(0, Math.min(1, event.loaded / event.total))
+      * (asset.head ? 0.58 : 1);
     document.body.style.setProperty('--model-progress', progress.toFixed(3));
   }, () => {
-    modelState.loading[id] = false;
-    if (state.activePersona === id && !modelState.active) {
-      modelLayer.visible = false;
-      avatar.visible = true;
-      document.body.classList.add('model-ready');
-      serverStateEl.textContent = '模型未接';
-      serverStateEl.title = '3D 模型加载失败，已临时回退到内置人物。';
-    }
+    failModelLoad(id);
   });
 }
 
@@ -3387,7 +3205,7 @@ function animate(time) {
   if (!modelState.active) updateActionPose(t);
   updateModelPose(t, delta);
   updateModelHandOverlays(t);
-  updateAnimeFace(modelState.active, t);
+  updateReplacementFace(modelState.active, t);
 
   if (state.action !== 'turn' && !modelState.active) {
     const viewYaw = state.dragYaw + state.pointerX * 0.04;
