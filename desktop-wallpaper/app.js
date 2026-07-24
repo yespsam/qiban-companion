@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.65-head-proportion';
+const modelAssetVersion = 'v0.2.66-native-face';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
   && params.get('quality') !== 'hd';
@@ -140,11 +140,10 @@ const characterModelUrl = (slug) => modelUrl(
 );
 
 const modelAssets = {
-  // One compact GLB per character, including the full V2 motion library.
+  // One compact GLB per character, including its vetted motion library.
   female: {
     selection: 'F4',
-    model: characterModelUrl('xiao-qi-v2'),
-    head: characterModelUrl('xiao-qi-head-v1'),
+    model: characterModelUrl('xiao-qi-native-v4'),
     animations: {},
     nativeAnimations: true,
     modeledHands: true
@@ -184,11 +183,6 @@ const nativeModelPlaybackRates = {
 const nativeModelClipRanges = {};
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
-const textureLoader = new THREE.TextureLoader();
-const femaleCurvedFaceTexture = textureLoader.load(
-  modelUrl('./assets/faces/xiao-qi-curved-face-v1.webp')
-);
-femaleCurvedFaceTexture.colorSpace = THREE.SRGBColorSpace;
 dracoLoader.setDecoderPath('./vendor/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
@@ -1231,138 +1225,165 @@ function updateModelHandOverlays(t) {
   syncOneModelHandOverlay(entry, 'Right', t);
 }
 
-function hideOriginalFemaleHead(root) {
-  root.traverse((object) => {
-    if (!object.isSkinnedMesh) return;
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    materials.filter(Boolean).forEach((material) => {
-      material.onBeforeCompile = (shader) => {
-        shader.vertexShader = `varying float vQibanBodyY;\n${shader.vertexShader}`
-          .replace(
-            '#include <begin_vertex>',
-            '#include <begin_vertex>\nvQibanBodyY = position.y;'
-          );
-        shader.fragmentShader = `varying float vQibanBodyY;\n${shader.fragmentShader}`
-          .replace(
-            '#include <clipping_planes_fragment>',
-            '#include <clipping_planes_fragment>\nif (vQibanBodyY > 1.39) discard;'
-          );
-      };
-      material.customProgramCacheKey = () => 'qiban-hide-original-head-v1';
-      material.needsUpdate = true;
-    });
-  });
-}
-
-function makeCurvedFaceGeometry() {
-  const geometry = new THREE.PlaneGeometry(0.88, 1, 64, 72);
-  const positions = geometry.getAttribute('position');
-  for (let index = 0; index < positions.count; index += 1) {
-    const x = positions.getX(index);
-    const y = positions.getY(index);
-    const nx = x / 0.44;
-    const ny = y / 0.5;
-    const radius = Math.min(1, nx * nx + ny * ny);
-    const chin = ny < 0 ? Math.max(0, 1 + ny * 0.12) : 1;
-    positions.setX(index, x * chin);
-    positions.setY(index, y + 1.03);
-    positions.setZ(index, 0.415 + (1 - radius) * 0.105);
-  }
-  geometry.computeVertexNormals();
-  return geometry;
-}
-
-function markReplacementFaceFeature(mesh) {
+function markNativeFaceFeature(mesh) {
   mesh.userData.qibanFaceFeature = true;
   mesh.frustumCulled = false;
   return mesh;
 }
 
-function buildFemaleHeadReplacement(entry, headGltf) {
-  if (!entry?.bones?.Head || !headGltf?.scene) return null;
-  hideOriginalFemaleHead(entry.root);
-
-  const head = headGltf.scene;
-  head.name = 'qiban-real3d-head-v1';
-  head.traverse((object) => {
-    if (!object.isMesh) return;
-    object.frustumCulled = false;
-    const materials = Array.isArray(object.material) ? object.material : [object.material];
-    materials.filter(Boolean).forEach((material) => {
-      enhanceLoadedMaterial(material);
-      if ('normalMap' in material) material.normalMap = null;
-      material.side = THREE.DoubleSide;
-      material.needsUpdate = true;
-    });
-  });
-
-  const hairCore = markReplacementFaceFeature(new THREE.Mesh(
-    new THREE.SphereGeometry(0.5, 64, 48),
-    new THREE.MeshStandardMaterial({
-      color: 0x302738,
-      roughness: 0.7,
-      metalness: 0.02,
-      side: THREE.DoubleSide
-    })
+function makeNativeFaceCurve(points, material, radius = 0.12) {
+  const curve = new THREE.CubicBezierCurve3(...points.map((point) => new THREE.Vector3(...point)));
+  return markNativeFaceFeature(new THREE.Mesh(
+    new THREE.TubeGeometry(curve, 24, radius, 8, false),
+    material
   ));
-  hairCore.name = 'qiban-hair-core';
-  hairCore.position.set(0, 1.08, -0.32);
-  hairCore.scale.set(0.9, 1.14, 0.52);
-  head.add(hairCore);
+}
 
-  tuneTexture(femaleCurvedFaceTexture, THREE.SRGBColorSpace);
-  const faceSurface = markReplacementFaceFeature(new THREE.Mesh(
-    makeCurvedFaceGeometry(),
-    new THREE.MeshBasicMaterial({
-      map: femaleCurvedFaceTexture,
-      transparent: true,
-      alphaTest: 0.025,
-      side: THREE.DoubleSide,
-      toneMapped: false
-    })
+function makeNativeEye(sign, materials) {
+  const eye = new THREE.Group();
+  eye.name = sign < 0 ? 'qiban-native-eye-left' : 'qiban-native-eye-right';
+  eye.position.set(sign * 3.65, 0.8, 0);
+
+  const orb = new THREE.Group();
+  eye.add(orb);
+
+  const sclera = markNativeFaceFeature(new THREE.Mesh(
+    new THREE.SphereGeometry(1, 40, 28),
+    materials.sclera
   ));
-  faceSurface.name = 'qiban-curved-face-surface';
-  faceSurface.renderOrder = 3;
-  head.add(faceSurface);
+  sclera.scale.set(1.5, 0.98, 0.76);
+  orb.add(sclera);
 
-  const mouthGroup = new THREE.Group();
-  mouthGroup.name = 'qiban-speaking-mouth';
-  mouthGroup.position.set(0, 0.815, 0.527);
-  mouthGroup.visible = false;
-  head.add(mouthGroup);
-
-  const mouthOpening = markReplacementFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 36),
-    new THREE.MeshBasicMaterial({ color: 0x4c1f2b })
+  const iris = markNativeFaceFeature(new THREE.Mesh(
+    new THREE.CylinderGeometry(0.52, 0.52, 0.1, 40),
+    materials.iris
   ));
-  mouthOpening.scale.set(0.065, 0.012, 1);
-  mouthGroup.add(mouthOpening);
+  iris.rotation.x = Math.PI / 2;
+  iris.position.z = 0.75;
+  iris.scale.set(0.94, 1.12, 1);
+  orb.add(iris);
 
-  const tongue = markReplacementFaceFeature(new THREE.Mesh(
-    new THREE.CircleGeometry(1, 28),
-    new THREE.MeshBasicMaterial({ color: 0xe17e8b })
+  const pupil = markNativeFaceFeature(new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.12, 32),
+    materials.pupil
   ));
-  tongue.position.set(0, -0.008, 0.001);
-  tongue.scale.set(0.038, 0.008, 1);
-  mouthGroup.add(tongue);
+  pupil.rotation.x = Math.PI / 2;
+  pupil.position.z = 0.82;
+  pupil.scale.y = 1.16;
+  orb.add(pupil);
 
-  head.position.set(0, -20.1, 0);
-  head.quaternion.set(-0.3312224, 0.0072473, -0.0072473, 0.9434971);
-  head.scale.set(21.3, 20.5, 20.4);
-  entry.bones.Head.add(head);
+  const highlight = markNativeFaceFeature(new THREE.Mesh(
+    new THREE.SphereGeometry(0.13, 20, 14),
+    materials.highlight
+  ));
+  highlight.position.set(-0.2, 0.24, 0.9);
+  highlight.scale.y = 1.2;
+  orb.add(highlight);
 
+  const upperLid = makeNativeFaceCurve([
+    [-1.5, 0.1, 0.78],
+    [-0.72, 1.25, 0.9],
+    [0.72, 1.25, 0.9],
+    [1.5, 0.1, 0.78]
+  ], materials.lash, 0.1);
+  eye.add(upperLid);
+
+  const lowerLid = makeNativeFaceCurve([
+    [-1.4, -0.02, 0.76],
+    [-0.66, -0.56, 0.82],
+    [0.66, -0.56, 0.82],
+    [1.4, -0.02, 0.76]
+  ], materials.lowerLid, 0.05);
+  eye.add(lowerLid);
+
+  const eyebrow = makeNativeFaceCurve([
+    [-1.32, 1.95, 0.46],
+    [-0.62, 2.38, 0.56],
+    [0.66, 2.34, 0.56],
+    [1.32, 1.98, 0.46]
+  ], materials.brow, 0.075);
+  eye.add(eyebrow);
+
+  return { root: eye, orb };
+}
+
+function buildNativeFemaleFace(entry) {
+  if (!entry?.bones?.Head) return null;
+  const materials = {
+    sclera: new THREE.MeshStandardMaterial({ color: 0xfffbf7, roughness: 0.46 }),
+    iris: new THREE.MeshStandardMaterial({ color: 0x766480, roughness: 0.38 }),
+    pupil: new THREE.MeshStandardMaterial({ color: 0x201923, roughness: 0.5 }),
+    highlight: new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    lash: new THREE.MeshStandardMaterial({ color: 0x2f2635, roughness: 0.62 }),
+    lowerLid: new THREE.MeshStandardMaterial({ color: 0xc88f98, roughness: 0.7 }),
+    brow: new THREE.MeshStandardMaterial({ color: 0x403345, roughness: 0.7 }),
+    lip: new THREE.MeshStandardMaterial({ color: 0xb96e79, roughness: 0.66 }),
+    mouth: new THREE.MeshStandardMaterial({ color: 0x4c1f2b, roughness: 0.74 }),
+    tongue: new THREE.MeshStandardMaterial({ color: 0xdf7f8d, roughness: 0.7 })
+  };
+
+  const faceRoot = new THREE.Group();
+  faceRoot.name = 'qiban-native-face-v1';
+  faceRoot.position.set(
+    Number(params.get('faceX') || 0),
+    Number(params.get('faceY') || 6.4),
+    Number(params.get('faceZ') || 8.65)
+  );
+  faceRoot.scale.setScalar(Number(params.get('faceScale') || 0.58));
+
+  const leftEye = makeNativeEye(-1, materials);
+  const rightEye = makeNativeEye(1, materials);
+  faceRoot.add(leftEye.root, rightEye.root);
+
+  const idleMouth = makeNativeFaceCurve([
+    [-1.2, -4.25, 0.76],
+    [-0.58, -4.5, 0.82],
+    [0.58, -4.5, 0.82],
+    [1.2, -4.25, 0.76]
+  ], materials.lip, 0.065);
+  idleMouth.name = 'qiban-native-mouth-idle';
+  faceRoot.add(idleMouth);
+
+  const mouthOpening = markNativeFaceFeature(new THREE.Mesh(
+    new THREE.SphereGeometry(1, 32, 22),
+    materials.mouth
+  ));
+  mouthOpening.name = 'qiban-native-mouth-speaking';
+  mouthOpening.position.set(0, -4.34, 0.76);
+  mouthOpening.scale.set(1.05, 0.1, 0.24);
+  mouthOpening.visible = false;
+  faceRoot.add(mouthOpening);
+
+  const tongue = markNativeFaceFeature(new THREE.Mesh(
+    new THREE.SphereGeometry(1, 28, 18),
+    materials.tongue
+  ));
+  tongue.position.set(0, -0.22, 0.68);
+  tongue.scale.set(0.5, 0.15, 0.12);
+  mouthOpening.add(tongue);
+
+  entry.bones.Head.add(faceRoot);
   return {
-    root: head,
-    faceSurface,
-    mouthGroup,
+    root: faceRoot,
+    eyes: [leftEye.orb, rightEye.orb],
+    idleMouth,
     mouthOpening,
     tongue
   };
 }
 
-function updateReplacementFace(entry, t) {
+function updateNativeFemaleFace(entry, t) {
   const face = entry?.faceRig;
   if (!face) return;
+  const blinkPhase = t % 4.7;
+  const blink = blinkPhase > 4.48
+    ? Math.sin(((blinkPhase - 4.48) / 0.22) * Math.PI)
+    : 0;
+  const eyeOpen = 1 - Math.max(0, blink) * 0.9;
+  face.eyes.forEach((eye) => {
+    eye.scale.y = eyeOpen;
+  });
+
   const active = state.speaking
     || state.voiceLoading
     || state.awaitingPlayback
@@ -1372,10 +1393,11 @@ function updateReplacementFace(entry, t) {
     : state.action === 'voice'
       ? 0.22 + Math.abs(Math.sin(t * 4.2)) * 0.18
       : 0.22;
-  face.mouthGroup.visible = active;
-  face.mouthOpening.scale.set(0.065 - syllable * 0.009, 0.012 + syllable * 0.03, 1);
-  face.tongue.scale.set(0.038, 0.006 + syllable * 0.009, 1);
-  face.tongue.position.y = -0.006 - syllable * 0.012;
+  face.idleMouth.visible = !active;
+  face.mouthOpening.visible = active;
+  face.mouthOpening.scale.set(1.05 - syllable * 0.1, 0.1 + syllable * 0.38, 0.24);
+  face.tongue.scale.y = 0.12 + syllable * 0.07;
+  face.tongue.position.y = -0.18 - syllable * 0.1;
 }
 
 function easeOutCubic(x) {
@@ -2360,7 +2382,7 @@ function failModelLoad(id, title = '3D 模型加载失败，已临时回退到�
   }
 }
 
-function completeModelLoad(id, asset, gltf, headGltf = null) {
+function completeModelLoad(id, asset, gltf) {
   const root = gltf.scene;
   normalizeLoadedModel(root);
   const entry = {
@@ -2378,8 +2400,8 @@ function completeModelLoad(id, asset, gltf, headGltf = null) {
     faceRig: null
   };
   entry.hasFingerBones = modelHasFingerBones(entry) || !!asset.modeledHands;
-  if (id === 'female' && headGltf) {
-    entry.faceRig = buildFemaleHeadReplacement(entry, headGltf);
+  if (id === 'female') {
+    entry.faceRig = buildNativeFemaleFace(entry);
   }
   // Native clips remain available for future vetted assets.
   (asset.nativeAnimations === false ? [] : gltf.animations || []).forEach((clip) => {
@@ -2429,23 +2451,10 @@ function loadModel(id) {
   }
   document.body.style.setProperty('--model-progress', '0');
   gltfLoader.load(asset.model, (gltf) => {
-    if (!asset.head) {
-      completeModelLoad(id, asset, gltf);
-      return;
-    }
-    gltfLoader.load(asset.head, (headGltf) => {
-      completeModelLoad(id, asset, gltf, headGltf);
-    }, (event) => {
-      if (!event.total || state.activePersona !== id) return;
-      const progress = 0.58 + Math.max(0, Math.min(1, event.loaded / event.total)) * 0.42;
-      document.body.style.setProperty('--model-progress', progress.toFixed(3));
-    }, () => {
-      failModelLoad(id, '真实 3D 头模加载失败，已临时回退到内置人物。');
-    });
+    completeModelLoad(id, asset, gltf);
   }, (event) => {
     if (!event.total || state.activePersona !== id) return;
-    const progress = Math.max(0, Math.min(1, event.loaded / event.total))
-      * (asset.head ? 0.58 : 1);
+    const progress = Math.max(0, Math.min(1, event.loaded / event.total));
     document.body.style.setProperty('--model-progress', progress.toFixed(3));
   }, () => {
     failModelLoad(id);
@@ -3209,7 +3218,7 @@ function animate(time) {
   if (!modelState.active) updateActionPose(t);
   updateModelPose(t, delta);
   updateModelHandOverlays(t);
-  updateReplacementFace(modelState.active, t);
+  updateNativeFemaleFace(modelState.active, t);
 
   if (state.action !== 'turn' && !modelState.active) {
     const viewYaw = state.dragYaw + state.pointerX * 0.04;

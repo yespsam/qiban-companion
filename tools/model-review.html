@@ -49,6 +49,7 @@
       const modelPath = params.get('model');
       const yaw = THREE.MathUtils.degToRad(Number(params.get('yaw') || 0));
       const focus = params.get('focus') || 'full';
+      const clay = params.get('material') === 'clay';
       const status = document.querySelector('#status');
 
       const renderer = new THREE.WebGLRenderer({
@@ -89,6 +90,26 @@
         ({ scene: model }) => {
           model.traverse((object) => {
             if (!object.isMesh && !object.isSkinnedMesh) return;
+            if (clay) {
+              if (!object.geometry.getAttribute('normal')) {
+                object.geometry.computeVertexNormals();
+              }
+              const materialCount = Array.isArray(object.material)
+                ? object.material.length
+                : 1;
+              const clayMaterials = Array.from(
+                { length: materialCount },
+                () => new THREE.MeshStandardMaterial({
+                  color: 0xb9bdc4,
+                  roughness: 0.82,
+                  metalness: 0,
+                  side: THREE.DoubleSide
+                })
+              );
+              object.material = Array.isArray(object.material)
+                ? clayMaterials
+                : clayMaterials[0];
+            }
             const materials = Array.isArray(object.material)
               ? object.material
               : [object.material];
@@ -120,7 +141,7 @@
           camera.far = distance * 20;
           camera.updateProjectionMatrix();
 
-          status.textContent = `${focus} / yaw ${params.get('yaw') || 0}`;
+          status.textContent = `${focus} / yaw ${params.get('yaw') || 0}${clay ? ' / clay' : ''}`;
           renderer.render(scene, camera);
           document.documentElement.dataset.ready = 'true';
         },

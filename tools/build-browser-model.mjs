@@ -11,28 +11,20 @@ import sharp from 'sharp';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const character = process.argv[2] || 'male';
 const v2Root = 'meshy_output/20260724_025638_qiban-v2-detailed-characters_019f9056';
+const nativeV4Root = 'meshy_output/20260724_215836_qiban-female-native-v4_019f946b/xiao-qi-native-v4';
 const builds = {
   female: {
-    base: `${v2Root}/xiao-qi-v2/rigged.glb`,
-    output: 'desktop-wallpaper/assets/models/xiao-qi-v2.glb',
-    mobileOutput: 'desktop-wallpaper/assets/models/xiao-qi-v2-mobile.glb',
-    face: {
-      leftEye: [0.183, 0.187],
-      rightEye: [0.198, 0.187],
-      leftCheek: [0.181, 0.205],
-      rightCheek: [0.201, 0.205],
-      mouthLeft: [0.185, 0.211],
-      mouthCenter: [0.19, 0.214],
-      mouthRight: [0.195, 0.211]
-    },
+    base: `${nativeV4Root}/rigged.glb`,
+    output: 'desktop-wallpaper/assets/models/xiao-qi-native-v4.glb',
+    mobileOutput: 'desktop-wallpaper/assets/models/xiao-qi-native-v4-mobile.glb',
     animations: {
       idle: `${v2Root}/xiao-qi-v2/idle.glb`,
       nod: `${v2Root}/xiao-qi-v2/nod.glb`,
       heart: `${v2Root}/xiao-qi-v2/heart.glb`,
       wave: `${v2Root}/xiao-qi-v2/wave.glb`,
       voice: `${v2Root}/xiao-qi-v2/voice.glb`,
-      walk: `${v2Root}/xiao-qi-v2/walk.glb`,
-      run: `${v2Root}/xiao-qi-v2/run.glb`
+      walk: `${nativeV4Root}/walking.glb`,
+      run: `${nativeV4Root}/running.glb`
     }
   },
   male: {
