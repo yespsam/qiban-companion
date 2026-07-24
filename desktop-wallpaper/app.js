@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.60-face-sculpted';
+const modelAssetVersion = 'v0.2.61-face-preloaded';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
   && params.get('quality') !== 'hd';
@@ -184,6 +184,20 @@ const nativeModelClipRanges = {};
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 const textureLoader = new THREE.TextureLoader();
+const femaleFaceTextureWaiters = [];
+const femaleFaceTexture = textureLoader.load(
+  modelUrl('./assets/faces/xiao-qi-face-v3.png'),
+  (texture) => {
+    texture.userData.qibanReady = true;
+    femaleFaceTextureWaiters.splice(0).forEach((waiter) => waiter.onReady());
+  },
+  undefined,
+  () => {
+    femaleFaceTexture.userData.qibanError = true;
+    femaleFaceTextureWaiters.splice(0).forEach((waiter) => waiter.onError());
+  }
+);
+femaleFaceTexture.colorSpace = THREE.SRGBColorSpace;
 dracoLoader.setDecoderPath('./vendor/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
@@ -1406,16 +1420,10 @@ function buildAnimeFaceOverlay(entry, id) {
 
   const detailLayer = new THREE.Group();
   detailLayer.name = 'qiban-procedural-face-fallback';
+  detailLayer.visible = false;
   face.add(detailLayer);
 
-  const faceTexture = textureLoader.load(
-    modelUrl('./assets/faces/xiao-qi-face-v3.png'),
-    () => {
-      photoOverlay.visible = true;
-      shell.visible = false;
-      detailLayer.visible = false;
-    }
-  );
+  const faceTexture = femaleFaceTexture;
   tuneTexture(faceTexture, THREE.SRGBColorSpace);
   const photoOverlay = markAnimeFaceFeature(new THREE.Mesh(
     new THREE.PlaneGeometry(21.2, 21.8, 10, 12),
@@ -1432,6 +1440,27 @@ function buildAnimeFaceOverlay(entry, id) {
   photoOverlay.renderOrder = 4;
   photoOverlay.visible = false;
   face.add(photoOverlay);
+
+  const showPhotoFace = () => {
+    photoOverlay.visible = true;
+    shell.visible = false;
+    detailLayer.visible = false;
+  };
+  const showFallbackFace = () => {
+    photoOverlay.visible = false;
+    shell.visible = true;
+    detailLayer.visible = true;
+  };
+  if (faceTexture.userData.qibanReady) {
+    showPhotoFace();
+  } else if (faceTexture.userData.qibanError) {
+    showFallbackFace();
+  } else {
+    femaleFaceTextureWaiters.push({
+      onReady: showPhotoFace,
+      onError: showFallbackFace
+    });
+  }
 
   const leftEye = buildAnimeEye(detailLayer, 'left', materials);
   const rightEye = buildAnimeEye(detailLayer, 'right', materials);
