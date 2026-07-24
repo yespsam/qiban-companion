@@ -131,10 +131,10 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.55-face-corrected';
+const modelAssetVersion = 'v0.2.56-face-corrected';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
-  && params.get('quality') === 'compact';
+  && params.get('quality') !== 'hd';
 const characterModelUrl = (slug) => modelUrl(
   `./assets/models/${slug}${compactModelAssets ? '-mobile' : ''}.glb`
 );
