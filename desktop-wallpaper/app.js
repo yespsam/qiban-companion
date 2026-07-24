@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.66-native-face';
+const modelAssetVersion = 'v0.2.67-native-eye-fix';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
   && params.get('quality') !== 'hd';
@@ -1225,181 +1225,6 @@ function updateModelHandOverlays(t) {
   syncOneModelHandOverlay(entry, 'Right', t);
 }
 
-function markNativeFaceFeature(mesh) {
-  mesh.userData.qibanFaceFeature = true;
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
-function makeNativeFaceCurve(points, material, radius = 0.12) {
-  const curve = new THREE.CubicBezierCurve3(...points.map((point) => new THREE.Vector3(...point)));
-  return markNativeFaceFeature(new THREE.Mesh(
-    new THREE.TubeGeometry(curve, 24, radius, 8, false),
-    material
-  ));
-}
-
-function makeNativeEye(sign, materials) {
-  const eye = new THREE.Group();
-  eye.name = sign < 0 ? 'qiban-native-eye-left' : 'qiban-native-eye-right';
-  eye.position.set(sign * 3.65, 0.8, 0);
-
-  const orb = new THREE.Group();
-  eye.add(orb);
-
-  const sclera = markNativeFaceFeature(new THREE.Mesh(
-    new THREE.SphereGeometry(1, 40, 28),
-    materials.sclera
-  ));
-  sclera.scale.set(1.5, 0.98, 0.76);
-  orb.add(sclera);
-
-  const iris = markNativeFaceFeature(new THREE.Mesh(
-    new THREE.CylinderGeometry(0.52, 0.52, 0.1, 40),
-    materials.iris
-  ));
-  iris.rotation.x = Math.PI / 2;
-  iris.position.z = 0.75;
-  iris.scale.set(0.94, 1.12, 1);
-  orb.add(iris);
-
-  const pupil = markNativeFaceFeature(new THREE.Mesh(
-    new THREE.CylinderGeometry(0.22, 0.22, 0.12, 32),
-    materials.pupil
-  ));
-  pupil.rotation.x = Math.PI / 2;
-  pupil.position.z = 0.82;
-  pupil.scale.y = 1.16;
-  orb.add(pupil);
-
-  const highlight = markNativeFaceFeature(new THREE.Mesh(
-    new THREE.SphereGeometry(0.13, 20, 14),
-    materials.highlight
-  ));
-  highlight.position.set(-0.2, 0.24, 0.9);
-  highlight.scale.y = 1.2;
-  orb.add(highlight);
-
-  const upperLid = makeNativeFaceCurve([
-    [-1.5, 0.1, 0.78],
-    [-0.72, 1.25, 0.9],
-    [0.72, 1.25, 0.9],
-    [1.5, 0.1, 0.78]
-  ], materials.lash, 0.1);
-  eye.add(upperLid);
-
-  const lowerLid = makeNativeFaceCurve([
-    [-1.4, -0.02, 0.76],
-    [-0.66, -0.56, 0.82],
-    [0.66, -0.56, 0.82],
-    [1.4, -0.02, 0.76]
-  ], materials.lowerLid, 0.05);
-  eye.add(lowerLid);
-
-  const eyebrow = makeNativeFaceCurve([
-    [-1.32, 1.95, 0.46],
-    [-0.62, 2.38, 0.56],
-    [0.66, 2.34, 0.56],
-    [1.32, 1.98, 0.46]
-  ], materials.brow, 0.075);
-  eye.add(eyebrow);
-
-  return { root: eye, orb };
-}
-
-function buildNativeFemaleFace(entry) {
-  if (!entry?.bones?.Head) return null;
-  const materials = {
-    sclera: new THREE.MeshStandardMaterial({ color: 0xfffbf7, roughness: 0.46 }),
-    iris: new THREE.MeshStandardMaterial({ color: 0x766480, roughness: 0.38 }),
-    pupil: new THREE.MeshStandardMaterial({ color: 0x201923, roughness: 0.5 }),
-    highlight: new THREE.MeshBasicMaterial({ color: 0xffffff }),
-    lash: new THREE.MeshStandardMaterial({ color: 0x2f2635, roughness: 0.62 }),
-    lowerLid: new THREE.MeshStandardMaterial({ color: 0xc88f98, roughness: 0.7 }),
-    brow: new THREE.MeshStandardMaterial({ color: 0x403345, roughness: 0.7 }),
-    lip: new THREE.MeshStandardMaterial({ color: 0xb96e79, roughness: 0.66 }),
-    mouth: new THREE.MeshStandardMaterial({ color: 0x4c1f2b, roughness: 0.74 }),
-    tongue: new THREE.MeshStandardMaterial({ color: 0xdf7f8d, roughness: 0.7 })
-  };
-
-  const faceRoot = new THREE.Group();
-  faceRoot.name = 'qiban-native-face-v1';
-  faceRoot.position.set(
-    Number(params.get('faceX') || 0),
-    Number(params.get('faceY') || 6.4),
-    Number(params.get('faceZ') || 8.65)
-  );
-  faceRoot.scale.setScalar(Number(params.get('faceScale') || 0.58));
-
-  const leftEye = makeNativeEye(-1, materials);
-  const rightEye = makeNativeEye(1, materials);
-  faceRoot.add(leftEye.root, rightEye.root);
-
-  const idleMouth = makeNativeFaceCurve([
-    [-1.2, -4.25, 0.76],
-    [-0.58, -4.5, 0.82],
-    [0.58, -4.5, 0.82],
-    [1.2, -4.25, 0.76]
-  ], materials.lip, 0.065);
-  idleMouth.name = 'qiban-native-mouth-idle';
-  faceRoot.add(idleMouth);
-
-  const mouthOpening = markNativeFaceFeature(new THREE.Mesh(
-    new THREE.SphereGeometry(1, 32, 22),
-    materials.mouth
-  ));
-  mouthOpening.name = 'qiban-native-mouth-speaking';
-  mouthOpening.position.set(0, -4.34, 0.76);
-  mouthOpening.scale.set(1.05, 0.1, 0.24);
-  mouthOpening.visible = false;
-  faceRoot.add(mouthOpening);
-
-  const tongue = markNativeFaceFeature(new THREE.Mesh(
-    new THREE.SphereGeometry(1, 28, 18),
-    materials.tongue
-  ));
-  tongue.position.set(0, -0.22, 0.68);
-  tongue.scale.set(0.5, 0.15, 0.12);
-  mouthOpening.add(tongue);
-
-  entry.bones.Head.add(faceRoot);
-  return {
-    root: faceRoot,
-    eyes: [leftEye.orb, rightEye.orb],
-    idleMouth,
-    mouthOpening,
-    tongue
-  };
-}
-
-function updateNativeFemaleFace(entry, t) {
-  const face = entry?.faceRig;
-  if (!face) return;
-  const blinkPhase = t % 4.7;
-  const blink = blinkPhase > 4.48
-    ? Math.sin(((blinkPhase - 4.48) / 0.22) * Math.PI)
-    : 0;
-  const eyeOpen = 1 - Math.max(0, blink) * 0.9;
-  face.eyes.forEach((eye) => {
-    eye.scale.y = eyeOpen;
-  });
-
-  const active = state.speaking
-    || state.voiceLoading
-    || state.awaitingPlayback
-    || state.action === 'voice';
-  const syllable = state.speaking
-    ? 0.45 + Math.abs(Math.sin(t * 12.2)) * 0.75
-    : state.action === 'voice'
-      ? 0.22 + Math.abs(Math.sin(t * 4.2)) * 0.18
-      : 0.22;
-  face.idleMouth.visible = !active;
-  face.mouthOpening.visible = active;
-  face.mouthOpening.scale.set(1.05 - syllable * 0.1, 0.1 + syllable * 0.38, 0.24);
-  face.tongue.scale.y = 0.12 + syllable * 0.07;
-  face.tongue.position.y = -0.18 - syllable * 0.1;
-}
-
 function easeOutCubic(x) {
   return 1 - Math.pow(1 - x, 3);
 }
@@ -2245,7 +2070,6 @@ function applyModelSkin(entry) {
   const tintColor = new THREE.Color(skin.tint);
   entry.root.traverse((object) => {
     if (!object.isMesh && !object.isSkinnedMesh) return;
-    if (object.userData.qibanFaceFeature) return;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
     materials.filter(Boolean).forEach((material) => {
       if (material.color) {
@@ -2396,13 +2220,9 @@ function completeModelLoad(id, asset, gltf) {
     mixer: new THREE.AnimationMixer(root),
     activeAnimation: '',
     activeAction: null,
-    hasFingerBones: false,
-    faceRig: null
+    hasFingerBones: false
   };
   entry.hasFingerBones = modelHasFingerBones(entry) || !!asset.modeledHands;
-  if (id === 'female') {
-    entry.faceRig = buildNativeFemaleFace(entry);
-  }
   // Native clips remain available for future vetted assets.
   (asset.nativeAnimations === false ? [] : gltf.animations || []).forEach((clip) => {
     const name = clip.name;
@@ -3218,7 +3038,6 @@ function animate(time) {
   if (!modelState.active) updateActionPose(t);
   updateModelPose(t, delta);
   updateModelHandOverlays(t);
-  updateNativeFemaleFace(modelState.active, t);
 
   if (state.action !== 'turn' && !modelState.active) {
     const viewYaw = state.dragYaw + state.pointerX * 0.04;
