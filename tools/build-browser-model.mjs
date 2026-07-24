@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { NodeIO } from '@gltf-transform/core';
+import sharp from 'sharp';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const character = process.argv[2] || 'male';
@@ -15,6 +16,15 @@ const builds = {
     base: `${v2Root}/xiao-qi-v2/rigged.glb`,
     output: 'desktop-wallpaper/assets/models/xiao-qi-v2.glb',
     mobileOutput: 'desktop-wallpaper/assets/models/xiao-qi-v2-mobile.glb',
+    face: {
+      leftEye: [0.183, 0.187],
+      rightEye: [0.198, 0.187],
+      leftCheek: [0.181, 0.205],
+      rightCheek: [0.201, 0.205],
+      mouthLeft: [0.185, 0.211],
+      mouthCenter: [0.19, 0.214],
+      mouthRight: [0.195, 0.211]
+    },
     animations: {
       idle: `${v2Root}/xiao-qi-v2/idle.glb`,
       nod: `${v2Root}/xiao-qi-v2/nod.glb`,
@@ -129,6 +139,46 @@ function runCli(args) {
   }
 }
 
+async function enhanceFaceTexture(document, face) {
+  if (!face) return;
+  const texture = document.getRoot().listTextures()[0];
+  const image = texture?.getImage();
+  if (!texture || !image) return;
+  const metadata = await sharp(image).metadata();
+  const width = metadata.width || 4096;
+  const height = metadata.height || 4096;
+  const point = ([x, y]) => [Math.round(x * width), Math.round(y * height)];
+  const [leftEyeX, leftEyeY] = point(face.leftEye);
+  const [rightEyeX, rightEyeY] = point(face.rightEye);
+  const [leftCheekX, leftCheekY] = point(face.leftCheek);
+  const [rightCheekX, rightCheekY] = point(face.rightCheek);
+  const [mouthLeftX, mouthLeftY] = point(face.mouthLeft);
+  const [mouthCenterX, mouthCenterY] = point(face.mouthCenter);
+  const [mouthRightX, mouthRightY] = point(face.mouthRight);
+  const unit = width / 2048;
+  const overlay = Buffer.from(`
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <g>
+        <ellipse cx="${leftCheekX}" cy="${leftCheekY}" rx="${8 * unit}" ry="${3.5 * unit}"
+          fill="#e98f9f" opacity="0.14"/>
+        <ellipse cx="${rightCheekX}" cy="${rightCheekY}" rx="${8 * unit}" ry="${3.5 * unit}"
+          fill="#e98f9f" opacity="0.14"/>
+        <circle cx="${leftEyeX}" cy="${leftEyeY}" r="${1.5 * unit}" fill="#fff8ef" opacity="0.9"/>
+        <circle cx="${rightEyeX}" cy="${rightEyeY}" r="${1.5 * unit}" fill="#fff8ef" opacity="0.9"/>
+        <path d="M ${mouthLeftX} ${mouthLeftY} Q ${mouthCenterX} ${mouthCenterY}
+          ${mouthRightX} ${mouthRightY}" fill="none" stroke="#965460"
+          stroke-width="${3.2 * unit}" stroke-linecap="round" opacity="0.9"/>
+      </g>
+    </svg>
+  `);
+  const enhanced = await sharp(image)
+    .composite([{ input: overlay, blend: 'over' }])
+    .png()
+    .toBuffer();
+  texture.setImage(enhanced).setMimeType('image/png');
+  console.log(`Enhanced face texture: ${width}x${height}`);
+}
+
 async function main() {
   const config = builds[character];
   const temp = await mkdtemp(join(tmpdir(), `qiban-${character}-`));
@@ -152,6 +202,7 @@ async function main() {
       console.log(`Merged animation: ${label}`);
     }
 
+    await enhanceFaceTexture(document, config.face);
     await io.write(merged, document);
     runCli(['webp', merged, desktopTextured, '--quality', '94', '--effort', '5']);
     runCli(['draco', desktopTextured, output, '--decode-speed', '7']);

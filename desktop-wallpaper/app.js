@@ -131,9 +131,10 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.49-meshy-v2';
+const modelAssetVersion = 'v0.2.55-face-corrected';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
-const compactModelAssets = window.matchMedia('(max-width: 720px)').matches;
+const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
+  && params.get('quality') === 'compact';
 const characterModelUrl = (slug) => modelUrl(
   `./assets/models/${slug}${compactModelAssets ? '-mobile' : ''}.glb`
 );
@@ -526,21 +527,21 @@ const mats = {
   outline: new THREE.MeshBasicMaterial({ color: 0x120d12, side: THREE.BackSide })
 };
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.34);
+const ambient = new THREE.AmbientLight(0xfff7f0, 0.16);
 scene.add(ambient);
 
-const hemiLight = new THREE.HemisphereLight(0xf7fbff, 0x26332e, 0.78);
+const hemiLight = new THREE.HemisphereLight(0xfff8f2, 0x202b28, 0.46);
 scene.add(hemiLight);
 
-const keyLight = new THREE.DirectionalLight(0xfff8ef, 2.1);
-keyLight.position.set(-3.4, 4.8, 4.8);
+const keyLight = new THREE.DirectionalLight(0xffeadc, 1.68);
+keyLight.position.set(-1.6, 3.6, 5.4);
 scene.add(keyLight);
 
-const fillLight = new THREE.PointLight(0xffefe5, 0.9, 10);
-fillLight.position.set(0.6, 2.8, 4.6);
+const fillLight = new THREE.PointLight(0xffd8c8, 0.34, 10);
+fillLight.position.set(1.8, 2.5, 4.8);
 scene.add(fillLight);
 
-const rimLight = new THREE.PointLight(personas.female.accent, 1.45, 10);
+const rimLight = new THREE.PointLight(personas.female.accent, 0.78, 10);
 rimLight.position.set(2.9, 0.2, 2.6);
 scene.add(rimLight);
 
@@ -2035,12 +2036,17 @@ function enhanceLoadedMaterial(material) {
     material.userData.qibanBaseEmissive = material.emissive.clone();
   }
   tuneTexture(material.map, THREE.SRGBColorSpace);
-  tuneTexture(material.emissiveMap, THREE.SRGBColorSpace);
   tuneTexture(material.normalMap);
   tuneTexture(material.roughnessMap);
   tuneTexture(material.metalnessMap);
+  // Meshy exports the base-color atlas as an emissive map as well. Reusing it
+  // flattens the face into a pale mask under bright scene lighting.
+  if ('emissiveMap' in material) material.emissiveMap = null;
   if ('emissiveIntensity' in material) {
-    material.emissiveIntensity = Math.min(material.emissiveIntensity || 1, 0.025);
+    material.emissiveIntensity = 0;
+  }
+  if (material.emissive) {
+    material.emissive.setHex(0x000000);
   }
   if ('roughness' in material) {
     material.roughness = Math.max(0.58, Math.min(material.roughness || 0.68, 0.78));
@@ -2062,7 +2068,6 @@ function applyModelSkin(entry) {
   if (!entry) return;
   const skin = currentSkin();
   const tintColor = new THREE.Color(skin.tint);
-  const emissiveColor = new THREE.Color(skin.accent);
   entry.root.traverse((object) => {
     if (!object.isMesh && !object.isSkinnedMesh) return;
     const materials = Array.isArray(object.material) ? object.material : [object.material];
@@ -2072,7 +2077,8 @@ function applyModelSkin(entry) {
         material.color.copy(base).lerp(tintColor, Math.min(skin.tintStrength, 0.04));
       }
       if (material.emissive) {
-        material.emissive.copy(emissiveColor).multiplyScalar(skin.emissive);
+        material.emissive.setHex(0x000000);
+        material.emissiveIntensity = 0;
       }
       if ('roughness' in material) {
         material.roughness = Math.max(0.56, Math.min(0.78, material.roughness || 0.68));
