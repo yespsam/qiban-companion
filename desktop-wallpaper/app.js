@@ -131,7 +131,7 @@ if (wallpaperEl && params.get('scene') === 'night') wallpaperEl.classList.add('b
 if (params.get('bg') === '0') document.body.classList.add('no-bg');
 if (enabledParam('mobile', false)) document.body.classList.add('mobile-mode');
 
-const modelAssetVersion = 'v0.2.64-real3d-head';
+const modelAssetVersion = 'v0.2.65-head-proportion';
 const modelUrl = (path) => `${path}?v=${modelAssetVersion}`;
 const compactModelAssets = window.matchMedia('(max-width: 720px)').matches
   && params.get('quality') !== 'hd';
@@ -1346,9 +1346,9 @@ function buildFemaleHeadReplacement(entry, headGltf) {
   tongue.scale.set(0.038, 0.008, 1);
   mouthGroup.add(tongue);
 
-  head.position.set(0, -19, 0);
+  head.position.set(0, -20.1, 0);
   head.quaternion.set(-0.3312224, 0.0072473, -0.0072473, 0.9434971);
-  head.scale.setScalar(20);
+  head.scale.set(21.3, 20.5, 20.4);
   entry.bones.Head.add(head);
 
   return {

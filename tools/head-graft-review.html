@@ -159,7 +159,10 @@
         });
         if (!headBone) throw new Error('Body model has no Head bone.');
 
-        const scale = Number(params.get('scale') || 0.2);
+        const uniformScale = params.get('scale');
+        const scaleX = Number(params.get('scaleX') || uniformScale || 21.3);
+        const scaleY = Number(params.get('scaleY') || uniformScale || 20.5);
+        const scaleZ = Number(params.get('scaleZ') || uniformScale || 20.4);
         const hairMaterial = new THREE.MeshStandardMaterial({
           color: 0x302738,
           roughness: 0.7,
@@ -206,7 +209,7 @@
         head.add(faceSurface);
         head.position.set(
           Number(params.get('x') || 0),
-          Number(params.get('y') || 0),
+          Number(params.get('y') || -20.1),
           Number(params.get('z') || 0)
         );
         head.quaternion.set(
@@ -215,7 +218,7 @@
           Number(params.get('qz') || -0.0072473),
           Number(params.get('qw') || 0.9434971)
         );
-        head.scale.setScalar(scale);
+        head.scale.set(scaleX, scaleY, scaleZ);
         headBone.add(head);
 
         const character = new THREE.Group();
@@ -241,7 +244,7 @@
         camera.far = distance * 20;
         camera.updateProjectionMatrix();
 
-        status.textContent = `scale ${scale} / head ${headSize.y.toFixed(5)} / body ${size.y.toFixed(5)}`;
+        status.textContent = `scale ${scaleX}/${scaleY}/${scaleZ} / head ${headSize.y.toFixed(5)} / body ${size.y.toFixed(5)}`;
         document.documentElement.dataset.headSize = headSize.toArray().join(',');
         document.documentElement.dataset.bodySize = size.toArray().join(',');
         renderer.render(scene, camera);
